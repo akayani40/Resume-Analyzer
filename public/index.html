@@ -1,23 +1,66 @@
 <!DOCTYPE html>
 <html>
-<head><title>Resume Analyzer</title></head>
+<head>
+  <title>Resume Analyzer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
 <body>
+
   <h2>Paste Your Resume Below:</h2>
   <textarea id="resume" rows="20" cols="80"></textarea><br>
-  <button onclick="analyze()">Analyze</button>
-  <pre id="result"></pre>
+  <button onclick="analyze()">Analyze Resume</button>
+  <div id="result"></div>
+
+  <h2>Paste Job Description Below:</h2>
+  <textarea id="jobDescription" rows="10" cols="80"></textarea><br>
+  <button onclick="compareToJob()">Compare Resume to Job</button>
+  <div id="matchResult"></div>
 
   <script>
     async function analyze() {
       const text = document.getElementById('resume').value;
       const res = await fetch('/analyze', {
         method: 'POST',
-        headers: {'Content-Type': 'text/plain'},
+        headers: { 'Content-Type': 'text/plain' },
         body: text
       });
       const data = await res.json();
-      document.getElementById('result').textContent = JSON.stringify(data, null, 2);
+
+      let output = `<h3>Total Words: ${data.wordCount}</h3>`;
+      output += `<table border="1"><tr><th>Keyword</th><th>Count</th></tr>`;
+      for (let [keyword, count] of Object.entries(data.keywordCounts)) {
+        if (count > 0) {
+          output += `<tr><td>${keyword}</td><td>${count}</td></tr>`;
+        }
+      }
+      output += `</table>`;
+      document.getElementById('result').innerHTML = output;
+    }
+
+    async function compareToJob() {
+      const resumeText = document.getElementById('resume').value;
+      const jobDescription = document.getElementById('jobDescription').value;
+
+      const res = await fetch('/match-job', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resumeText, jobDescription })
+      });
+
+      if (!res.ok) {
+        document.getElementById('matchResult').innerHTML = 'Error comparing job and resume.';
+        return;
+      }
+
+      const data = await res.json();
+
+      let html = `<h3>Match Score: ${data.matchPercent}%</h3>`;
+      html += `<p><strong>Matching Keywords (${data.matchingKeywords.length}):</strong> ${data.matchingKeywords.join(', ')}</p>`;
+      html += `<p><strong>Missing Keywords (${data.missingKeywords.length}):</strong> ${data.missingKeywords.join(', ')}</p>`;
+
+      document.getElementById('matchResult').innerHTML = html;
     }
   </script>
+
 </body>
 </html>
