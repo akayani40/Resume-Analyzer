@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script>
+    (function () {
+      const savedTheme = localStorage.getItem('theme') || 'light';
+      document.documentElement.setAttribute('data-theme', savedTheme);
+    })();
+  </script>
+  <meta charset="UTF-8" />
+  <title>Business Resume Analyzer</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="style.css" />
+  <script>
+    // Apply saved theme on load
+    window.addEventListener('DOMContentLoaded', () => {
+      const savedTheme = localStorage.getItem('theme') || 'light';
+      document.documentElement.setAttribute('data-theme', savedTheme);
+      const toggle = document.getElementById('modeToggle');
+      if (toggle) toggle.checked = savedTheme === 'dark';
+
+      if (toggle) {
+        toggle.addEventListener('change', () => {
+          const newTheme = toggle.checked ? 'dark' : 'light';
+          document.documentElement.setAttribute('data-theme', newTheme);
+          localStorage.setItem('theme', newTheme);
+        });
+      }
+    });
+  </script>
+</head>
+<body>
+
+  <!-- 🌙 Toggle -->
+  <label class="switch">
+    <input type="checkbox" id="modeToggle" />
+    <span class="slider round"></span>
+  </label>
+
+  <!-- 🔁 Tab Navigation -->
+  <div class="nav-tabs">
+    <a href="index.html" class="header-tab">Tech</a>
+    <a href="business.html" class="header-tab active">Business</a>
+    <a href="science.html" class="header-tab">Science</a>
+    <a href="other.html" class="header-tab">Other</a>
+  </div>
+
+  <!-- 📦 Main Container -->
+  <div class="container">
+    <div style="text-align: center; margin-bottom: 40px;">
+      <h1 style="font-size: 48px; margin: 0;">ParsePro</h1>
+      <p style="font-size: 18px; margin-top: 8px; color: var(--text); opacity: 0.9;">
+        Tailored insights for Business professionals — powered by AI.
+      </p>
+    </div>
+
+    <h2>Upload Your Resume</h2>
+    <form id="resumeForm" enctype="multipart/form-data">
+      <label class="file-upload">
+        📄 <span id="fileName">Select Your Resume</span>
+        <input id="resumeInput" type="file" name="resume" accept=".pdf,.docx,.txt" required />
+      </label>
+      <br><br>
+      <button type="submit">Analyze Resume</button>
+    </form>
+
+    <div id="controls" style="display: none;">
+      <button onclick="toggleView('result')">🧠 Skill View</button>
+      <button onclick="toggleView('atsView')">📄 ATS View</button>
+    </div>
+
+    <div id="result"></div>
+    <div id="atsView"></div>
+  </div>
+
+  <!-- 🔧 Page Script -->
+  <script src="business.js"></script>
+</body>
+</html>
