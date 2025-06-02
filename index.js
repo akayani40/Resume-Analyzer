@@ -1,7 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const axios = require('axios');
-const FormData = require('form-data');
+const pdfParse = require('pdf-parse');
 const { OpenAI } = require('openai');
 const app = express();
 const upload = multer();
@@ -12,10 +11,8 @@ app.use(express.static('public'));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-const AFFINDA_KEY = process.env.AFFINDA_KEY;
 const OPENAI_KEY = process.env.OPENAI_KEY; 
 const openai = new OpenAI({ apiKey: OPENAI_KEY });
-
 
 const MOCK_MODE = false;
 
@@ -29,24 +26,27 @@ app.post('/analyze-resume', upload.single('resume'), async (req, res) => {
     if (MOCK_MODE) {
       rawSkills = ['JavaScript', 'React', 'Node.js', 'Git', 'AWS', 'Teamwork', 'Public Speaking'];
     } else {
-      const form = new FormData();
-      form.append('file', file.buffer, {
-        filename: file.originalname,
-        contentType: file.mimetype
+      const parsed = await pdfParse(file.buffer);
+      const resumeText = parsed.text;
+
+      const skillExtractPrompt = `
+You're an AI assistant. A user has uploaded a resume. Extract the most relevant skills (hard and soft) mentioned in this text. Return them in a JSON array of strings. Only output JSON.
+
+Resume:
+"""${resumeText}"""
+      `.trim();
+
+      const skillResponse = await openai.chat.completions.create({
+        model: 'gpt-4',
+        messages: [{ role: 'user', content: skillExtractPrompt }],
+        temperature: 0.2
       });
 
-      const affindaRes = await axios.post(
-        'https://api.affinda.com/v2/resumes',
-        form,
-        {
-          headers: {
-            ...form.getHeaders(),
-            Authorization: `Bearer ${AFFINDA_KEY}`
-          }
-        }
-      );
-
-      rawSkills = affindaRes.data.data.skills?.map(s => s.name).filter(Boolean) || [];
+      try {
+        rawSkills = JSON.parse(skillResponse.choices[0].message.content || '[]');
+      } catch {
+        rawSkills = [];
+      }
     }
 
     if (rawSkills.length === 0) {
@@ -71,7 +71,7 @@ ${JSON.stringify(rawSkills)}
     `.trim();
 
     const gptCategorize = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
+      model: 'gpt-4',
       messages: [{ role: 'user', content: categorizePrompt }],
       temperature: 0.2
     });
@@ -90,14 +90,14 @@ ${JSON.stringify(rawSkills)}
     }
 
     const feedbackPrompt = `
-You're a recruiter for either a FANG company or just a serious harsh recruiter for any type of Tech comapny. A user has uploaded a resume with these categorized skills:
+You're a recruiter for either a FANG company or just a serious harsh recruiter for any type of Tech company. A user has uploaded a resume with these categorized skills:
 ${JSON.stringify(categorizedSkills, null, 2)}
 Give 3–4 specific and encouraging suggestions for what they should improve. Adapt advice to both tech and non-tech resumes.
 Create a line of space in between the sections of tech related and non tech related.
     `.trim();
 
     const gptFeedback = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
+      model: 'gpt-4',
       messages: [{ role: 'user', content: feedbackPrompt }],
       temperature: 0.5
     });
@@ -113,7 +113,7 @@ Return plain text only.
     `.trim();
 
     const gptProjects = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
+      model: 'gpt-4',
       messages: [{ role: 'user', content: projectPrompt }],
       temperature: 0.6
     });
@@ -155,36 +155,44 @@ app.post('/ats-scan', upload.single('resume'), async (req, res) => {
         ]
       };
     } else {
-      const form = new FormData();
-      form.append('file', file.buffer, {
-        filename: file.originalname,
-        contentType: file.mimetype
+      const parsed = await pdfParse(file.buffer);
+      const resumeText = parsed.text;
+
+      const atsPrompt = `
+You're an ATS scanner. Extract the following from this resume text:
+
+- Full name
+- Email
+- Phone number
+- Education history (school, degree, dates)
+- Work experience (title, company, dates, location)
+
+Return this in clean JSON format:
+{
+  "name": "",
+  "email": "",
+  "phone": "",
+  "education": [ { "organization": "", "degree": "", "dates": "" } ],
+  "experience": [ { "title": "", "company": "", "dates": "", "location": "" } ]
+}
+
+Resume:
+"""
+${resumeText}
+"""
+      `.trim();
+
+      const atsResponse = await openai.chat.completions.create({
+        model: 'gpt-4',
+        messages: [{ role: 'user', content: atsPrompt }],
+        temperature: 0.2
       });
 
-      const response = await axios.post('https://api.affinda.com/v2/resumes', form, {
-        headers: {
-          ...form.getHeaders(),
-          Authorization: `Bearer ${AFFINDA_KEY}`
-        }
-      });
-
-      const data = response.data.data;
-      atsSummary = {
-        name: data.name?.text || 'Not found',
-        email: data.emails?.[0] || 'Not found',
-        phone: data.phoneNumbers?.[0] || 'Not found',
-        education: (data.education || []).map(e => ({
-          organization: e.organization,
-          degree: e.accreditation?.education || e.accreditation?.inputStr || 'Unknown degree',
-          dates: [e.dates?.startDate, e.dates?.endDate].filter(Boolean).join(' - ')
-        })),
-        experience: (data.workExperience || []).map(e => ({
-          title: e.jobTitle,
-          company: e.organization,
-          dates: `${e.dates?.startDate || ''} - ${e.dates?.endDate || ''}`,
-          location: e.location?.text || ''
-        }))
-      };
+      try {
+        atsSummary = JSON.parse(atsResponse.choices[0]?.message?.content || '{}');
+      } catch {
+        atsSummary = {};
+      }
     }
 
     res.json({ atsSummary });
