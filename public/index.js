@@ -17,7 +17,7 @@ const OPENAI_KEY = process.env.OPENAI_KEY;
 const openai = new OpenAI({ apiKey: OPENAI_KEY });
 
 
-const MOCK_MODE = true;
+const MOCK_MODE = false;
 
 app.post('/analyze-resume', upload.single('resume'), async (req, res) => {
   const file = req.file;
