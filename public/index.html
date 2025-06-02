@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Resume Skill Analyzer</title>
+  <title>ParsePro - Resume Analyzer</title>
   <link rel="stylesheet" href="style.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
@@ -11,21 +11,12 @@
   </script>
 </head>
 <body>
-  <!-- 🌙 Toggle -->
+  <!-- Theme Toggle -->
   <label class="switch">
     <input type="checkbox" id="modeToggle" />
     <span class="slider round"></span>
   </label>
 
-  <!-- Tabs -->
-  <div class="nav-tabs">
-    <a href="index.html" class="header-tab active">Tech</a>
-    <a href="business.html" class="header-tab">Business</a>
-    <a href="science.html" class="header-tab">Science</a>
-    <a href="other.html" class="header-tab">Other</a>
-  </div>
-
-  <!-- Header -->
   <div class="container">
     <div style="text-align: center; margin-bottom: 40px;">
       <h1 style="font-size: 48px; margin: 0;">ParsePro</h1>
@@ -34,7 +25,7 @@
       </p>
     </div>
 
-    <!-- Upload -->
+    <!-- Upload Form -->
     <h2>Upload Your Resume</h2>
     <form id="resumeForm" enctype="multipart/form-data">
       <label class="file-upload">
@@ -45,7 +36,7 @@
       <button type="submit">Analyze Resume</button>
     </form>
 
-    <div id="controls" style="display: none;">
+    <div id="controls" style="display: none; gap: 10px; margin-top: 20px;">
       <button onclick="toggleView('result')">🧠 Skill View</button>
       <button onclick="toggleView('atsView')">📄 ATS View</button>
     </div>
@@ -55,16 +46,14 @@
   </div>
 
   <script>
-    window.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', () => {
       const toggle = document.getElementById('modeToggle');
-      if (toggle) {
-        toggle.checked = localStorage.getItem('theme') === 'dark';
-        toggle.addEventListener('change', () => {
-          const theme = toggle.checked ? 'dark' : 'light';
-          document.documentElement.setAttribute('data-theme', theme);
-          localStorage.setItem('theme', theme);
-        });
-      }
+      toggle.checked = localStorage.getItem('theme') === 'dark';
+      toggle.addEventListener('change', () => {
+        const theme = toggle.checked ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem('theme', theme);
+      });
 
       const fileInput = document.getElementById('resumeInput');
       const fileNameSpan = document.getElementById('fileName');
@@ -81,10 +70,7 @@
     document.getElementById('resumeForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const file = document.getElementById('resumeInput').files[0];
-      if (!file) {
-        document.getElementById('result').innerHTML = '❌ Please upload a resume file.';
-        return;
-      }
+      if (!file) return;
 
       const formData = new FormData();
       formData.append('resume', file);
@@ -96,10 +82,7 @@
       try {
         const res = await fetch('/analyze-resume', { method: 'POST', body: formData });
         const data = await res.json();
-        if (data.error) {
-          document.getElementById('result').innerHTML = '❌ ' + data.error;
-          return;
-        }
+        if (data.error) return document.getElementById('result').innerHTML = '❌ ' + data.error;
 
         let html = `<h3>✅ Resume Parsed & Categorized</h3>`;
         for (const [cat, skills] of Object.entries(data.categorizedSkills || {})) {
@@ -159,7 +142,7 @@
           });
         }
 
-        // Load ATS Summary
+        // ATS view
         const atsRes = await fetch('/ats-scan', { method: 'POST', body: formData });
         const atsData = await atsRes.json();
         if (!atsData.error && atsData.atsSummary) {

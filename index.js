@@ -2,19 +2,21 @@ const express = require('express');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const { OpenAI } = require('openai');
+const cors = require('cors');
+require('dotenv').config();
+
 const app = express();
 const upload = multer();
-require('dotenv').config();
 const PORT = 3000;
 
+const OPENAI_KEY = process.env.OPENAI_KEY;
+const openai = new OpenAI({ apiKey: OPENAI_KEY });
+const MOCK_MODE = false;
+
+app.use(cors());
 app.use(express.static('public'));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
-
-const OPENAI_KEY = process.env.OPENAI_KEY; 
-const openai = new OpenAI({ apiKey: OPENAI_KEY });
-
-const MOCK_MODE = false;
 
 app.post('/analyze-resume', upload.single('resume'), async (req, res) => {
   const file = req.file;
