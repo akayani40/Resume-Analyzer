@@ -4,7 +4,8 @@
   <meta charset="UTF-8" />
   <title>ParsePro - Resume Analyzer</title>
   <link rel="stylesheet" href="style.css" />
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Add jsPDF library for PDF generation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script>
     const savedTheme = localStorage.getItem('theme') || 'light';
     document.documentElement.setAttribute('data-theme', savedTheme);
@@ -25,24 +26,65 @@
       </p>
     </div>
 
-    <!-- Upload Form -->
-    <h2>Upload Your Resume</h2>
-    <form id="resumeForm" enctype="multipart/form-data">
-      <label class="file-upload">
-        📄 <span id="fileName">Select Your Resume</span>
-        <input id="resumeInput" type="file" name="resume" accept=".pdf,.docx,.txt" required />
-      </label>
-      <br><br>
-      <button type="submit">Analyze Resume</button>
-    </form>
+
+<div class="upload-center" id="uploadUI">
+  <form id="resumeForm" enctype="multipart/form-data">
+    <div class="upload-area" id="drop-zone">
+      <div class="upload-icon">📄</div>
+      <p class="upload-text">Select or drag your file</p>
+      <input id="resumeInput" type="file" name="resume" accept=".pdf,.docx,.txt" required />
+    </div>
+  </form>
+</div>
+
+<div id="progressWrapper" class="fade" style="display: none; text-align: center;">
+  <p id="progressMessage" class="upload-text">Uploading and analyzing your resume...</p>
+  <div id="progressText">0%</div>
+  <div class="progress-container" id="progressBarContainer">
+    <div class="progress-bar" id="progressBar"></div>
+  </div>
+  <p class="wait-message">Please wait 15-30 seconds for everything to load</p>
+</div>
+
+
+
+
 
     <div id="controls" style="display: none; gap: 10px; margin-top: 20px;">
-      <button onclick="toggleView('result')">🧠 Skill View</button>
       <button onclick="toggleView('atsView')">📄 ATS View</button>
+      <button onclick="toggleView('suggestionsView')">💡 Suggestions</button>
+      <button onclick="toggleView('chatView')">💬 Chat & Edit</button>
     </div>
 
-    <div id="result"></div>
-    <div id="atsView"></div>
+    <div id="atsView" style="display: none;"></div>
+    <div id="suggestionsView" style="display: none;"></div>
+    <div id="chatView" style="display: none;">
+      <div class="chat-resume-container">
+        <div class="chat-section">
+          <h3>💬 Chat with AI Assistant</h3>
+          <div class="chat-container">
+            <div id="chatMessages" class="chat-messages">
+              <!-- Chat messages will appear here -->
+            </div>
+            <div class="chat-input-container">
+              <textarea id="chatInput" class="chat-input" placeholder="Ask for resume advice or editing suggestions..."></textarea>
+              <button id="sendMessage" class="chat-send-btn">Send</button>
+            </div>
+          </div>
+        </div>
+        
+        <div class="resume-section">
+          <h3>Resume Editor</h3>
+          <div class="editor-toolbar">
+            <button id="downloadResume" class="download-btn">Download as PDF</button>
+          </div>
+          <div id="resumeEditor" class="resume-editor" contenteditable="true">
+            <!-- Resume content will be loaded here with formatting preserved -->
+            <div class="resume-placeholder">Your formatted resume will appear here after upload.</div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -55,127 +97,451 @@
         localStorage.setItem('theme', theme);
       });
 
-      const fileInput = document.getElementById('resumeInput');
-      const fileNameSpan = document.getElementById('fileName');
-      fileInput.addEventListener('change', () => {
-        fileNameSpan.textContent = fileInput.files[0]?.name || "Select Your Resume";
-      });
-    });
 
-    function toggleView(viewId) {
-      document.getElementById('result').style.display = viewId === 'result' ? 'block' : 'none';
-      document.getElementById('atsView').style.display = viewId === 'atsView' ? 'block' : 'none';
+
+
+
+
+      const dropZone = document.getElementById('drop-zone');
+      const fileInput = document.getElementById('resumeInput');
+
+['dragenter', 'dragover'].forEach(eventName => {
+  dropZone.addEventListener(eventName, (e) => {
+    e.preventDefault();
+    dropZone.classList.add('dragover');
+  });
+});
+
+['dragleave', 'drop'].forEach(eventName => {
+  dropZone.addEventListener(eventName, (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+  });
+});
+
+dropZone.addEventListener('drop', (e) => {
+  const files = e.dataTransfer.files;
+  if (files.length > 0) {
+    fileInput.files = files;
+    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+});
+
+
+
+
+fileInput.addEventListener('change', async () => {
+  const file = fileInput.files[0];
+  if (!file) return;
+
+  document.getElementById('uploadUI').classList.add('fade-out');
+
+  const progressWrapper = document.getElementById('progressWrapper');
+  const progressBar = document.getElementById('progressBar');
+  const progressText = document.getElementById('progressText');
+  const progressMessage = document.getElementById('progressMessage');
+  progressWrapper.style.display = 'block';
+  progressWrapper.classList.add('show');
+
+  
+
+  progressBar.style.width = '0%';
+  progressText.innerText = '0%';
+  progressMessage.innerText = 'Uploading and analyzing your resume...';
+
+  const formData = new FormData();
+  formData.append('resume', file);
+
+  let progress = 0;
+  const interval = setInterval(() => {
+  if (progress >= 98) {
+    clearInterval(interval); // Stop updating at 98%
+    return; // ✅ Don't reset it to 98 again
+  }
+  progress += 4;
+  if (progress > 98) progress = 98; // Cap at 98
+  progressBar.style.width = progress + '%';
+  progressText.innerText = progress + '%';
+}, 120);
+
+
+
+  try {
+  const res = await fetch('/analyze-resume', { method: 'POST', body: formData });
+  const data = await res.json();
+
+  clearInterval(interval);
+  progressBar.style.width = '100%';
+  progressText.innerText = '100%';
+  progressMessage.innerText = '✅ Done! Displaying results...';
+
+  document.getElementById('controls').style.display = 'flex';
+  toggleView('suggestionsView'); // TEMP: Show Suggestions tab directly
+
+
+  setTimeout(() => {
+    progressWrapper.classList.add('fade-out');
+    setTimeout(() => {
+      progressWrapper.style.display = 'none';
+    }, 500);
+  }, 1200);
+
+  // Fetch ATS data
+  const atsRes = await fetch('/ats-scan', { method: 'POST', body: formData });
+  const atsData = await atsRes.json();
+
+  if (!atsData.error && atsData.atsSummary) {
+    const ats = atsData.atsSummary;
+    let atsHTML = `<h3>📄 ATS Summary View</h3>`;
+    atsHTML += `<p><strong>Name:</strong> ${ats.name || '-'}</p>`;
+    atsHTML += `<p><strong>Email:</strong> ${ats.email || '-'}</p>`;
+    atsHTML += `<p><strong>Phone:</strong> ${ats.phone || '-'}</p>`;
+
+    if (ats.experience?.length) {
+      atsHTML += `<h4>Experience:</h4><ul>`;
+      ats.experience.forEach(exp => {
+        atsHTML += `<li><strong>${exp.title}</strong> at ${exp.company} (${exp.dates})${exp.location ? ' – ' + exp.location : ''}</li>`;
+      });
+      atsHTML += `</ul>`;
     }
 
-    document.getElementById('resumeForm').addEventListener('submit', async (e) => {
+    if (ats.education?.length) {
+      atsHTML += `<h4>Education:</h4><ul>`;
+      ats.education.forEach(ed => {
+        atsHTML += `<li>${ed.degree} at ${ed.organization} ${ed.dates ? `(${ed.dates})` : ''}</li>`;
+      });
+      atsHTML += `</ul>`;
+    }
+
+    const atsDiv = document.getElementById('atsView');
+    atsDiv.innerHTML = atsHTML;
+    atsDiv.classList.add('fade-in');
+    
+    // Use the original resume HTML if available, otherwise generate a formatted resume
+    if (atsData.originalResumeHTML) {
+      // Use the original resume HTML from the server
+      document.getElementById('resumeEditor').innerHTML = atsData.originalResumeHTML;
+    } else {
+      // Fallback to generating HTML from ATS data
+      let resumeHTML = '';
+      
+      // Header with name and contact info
+      if (ats.name) {
+        resumeHTML += `<h1>${ats.name}</h1>`;
+        
+        // Contact info section
+        let contactInfo = '';
+        if (ats.email) contactInfo += ats.email;
+        if (ats.phone) {
+          if (contactInfo) contactInfo += ' | ';
+          contactInfo += ats.phone;
+        }
+        
+        if (contactInfo) {
+          resumeHTML += `<div class="contact-info">${contactInfo}</div>`;
+        }
+      }
+      
+      // Experience section
+      if (ats.experience?.length) {
+        resumeHTML += `<h2>EXPERIENCE</h2>`;
+        
+        ats.experience.forEach(exp => {
+          resumeHTML += `<div class="section">`;
+          resumeHTML += `<p class="job-title">${exp.title}</p>`;
+          resumeHTML += `<div class="job-details">`;
+          resumeHTML += `<span>${exp.company}</span>`;
+          resumeHTML += `<span>${exp.dates}${exp.location ? ' – ' + exp.location : ''}</span>`;
+          resumeHTML += `</div>`;
+          resumeHTML += `<ul>`;
+          resumeHTML += `<li>Accomplishment or responsibility (edit this)</li>`;
+          resumeHTML += `<li>Another accomplishment or responsibility (edit this)</li>`;
+          resumeHTML += `</ul>`;
+          resumeHTML += `</div>`;
+        });
+      }
+      
+      // Education section
+      if (ats.education?.length) {
+        resumeHTML += `<h2>EDUCATION</h2>`;
+        
+        ats.education.forEach(ed => {
+          resumeHTML += `<div class="section">`;
+          resumeHTML += `<p class="job-title">${ed.degree}</p>`;
+          resumeHTML += `<div class="job-details">`;
+          resumeHTML += `<span>${ed.organization}</span>`;
+          if (ed.dates) resumeHTML += `<span>${ed.dates}</span>`;
+          resumeHTML += `</div>`;
+          resumeHTML += `</div>`;
+        });
+      }
+      
+      // Skills section (placeholder)
+      resumeHTML += `<h2>SKILLS</h2>`;
+      resumeHTML += `<p>Edit this section to add your skills</p>`;
+      
+      // Update the resume editor with the formatted HTML content
+      document.getElementById('resumeEditor').innerHTML = resumeHTML;
+    }
+  }
+
+  if (data.projectIdeas) {
+    const suggestionsDiv = document.getElementById('suggestionsView');
+    let projectIdeasHTML = '';
+    
+    // Parse project ideas into a more structured format
+    if (typeof data.projectIdeas === 'string') {
+      // Split by lines and filter out empty lines
+      const lines = data.projectIdeas.split('\n').filter(line => line.trim());
+      
+      lines.forEach(line => {
+        // Check if line starts with "Project" or contains a project number
+        if (line.toLowerCase().includes('project') || /^\d+\./.test(line)) {
+          projectIdeasHTML += `<h4>${line}</h4>`;
+        } else {
+          projectIdeasHTML += `<p>${line}</p>`;
+        }
+      });
+    } else {
+      // If it's not a string, just display it as is
+      projectIdeasHTML = `<p>${data.projectIdeas}</p>`;
+    }
+    
+    suggestionsDiv.innerHTML = `
+      <h3>💡 Project Suggestions</h3>
+      ${projectIdeasHTML}
+    `;
+    suggestionsDiv.classList.add('fade-in');
+  }
+
+} catch (err) {
+  console.error(err);
+  clearInterval(interval);
+  progressMessage.innerHTML = '<span style="color: red;">❌ <strong>Something went wrong.</strong></span>';
+}
+
+});
+
+});
+
+function toggleView(view) {
+  const views = ['atsView', 'suggestionsView', 'chatView'];
+  views.forEach(id => {
+    const el = document.getElementById(id);
+    const btn = document.querySelector(`button[onclick="toggleView('${id}')"]`);
+    if (el) el.style.display = view === id ? 'block' : 'none';
+    if (btn) btn.classList.toggle('active-tab', view === id);
+  });
+}
+
+// Chat functionality with conversation history
+let resumeText = ''; // Will store the parsed resume text
+let conversationHistory = []; // Will store the conversation history
+
+document.addEventListener('DOMContentLoaded', () => {
+  const chatInput = document.getElementById('chatInput');
+  const sendButton = document.getElementById('sendMessage');
+  const chatMessages = document.getElementById('chatMessages');
+  const resumeEditor = document.getElementById('resumeEditor');
+  const downloadButton = document.getElementById('downloadResume');
+  
+  // Send message when clicking the send button
+  sendButton.addEventListener('click', sendMessage);
+  
+  // Send message when pressing Enter (but allow Shift+Enter for new lines)
+  chatInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      const file = document.getElementById('resumeInput').files[0];
-      if (!file) return;
-
-      const formData = new FormData();
-      formData.append('resume', file);
-
-      document.getElementById('result').innerHTML = '⏳ Analyzing...';
-      document.getElementById('atsView').innerHTML = '';
-      document.getElementById('controls').style.display = 'none';
-
-      try {
-        const res = await fetch('/analyze-resume', { method: 'POST', body: formData });
-        const data = await res.json();
-        if (data.error) return document.getElementById('result').innerHTML = '❌ ' + data.error;
-
-        let html = `<h3>✅ Resume Parsed & Categorized</h3>`;
-        for (const [cat, skills] of Object.entries(data.categorizedSkills || {})) {
-          html += `<div class="category"><h4>${cat}</h4>`;
-          html += skills.length ? `<p>${skills.join(', ')}</p>` : `<p class="empty">No skills found.</p>`;
-          html += `</div>`;
+      sendMessage();
+    }
+  });
+  
+  // Download resume as PDF file
+  downloadButton.addEventListener('click', () => {
+    const content = resumeEditor.innerHTML; // Get HTML content to preserve formatting
+    
+    // Create PDF document
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+    
+    // Set font and margins
+    doc.setFont('helvetica', 'normal');
+    const margin = 20; // margin in mm
+    
+    // Use HTML content to generate PDF
+    // This is a simplified approach - in a production app, you might use html2canvas or similar
+    // to capture the exact formatting
+    
+    // Extract text content but preserve some basic formatting
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = content;
+    
+    // Get all text nodes and elements in order
+    const textNodes = [];
+    const walker = document.createTreeWalker(
+      tempDiv,
+      NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+      null,
+      false
+    );
+    
+    let node;
+    let y = margin;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    
+    // Process each node to maintain basic formatting
+    while ((node = walker.nextNode())) {
+      if (node.nodeType === Node.TEXT_NODE && node.textContent.trim()) {
+        // Get parent element to determine styling
+        const parent = node.parentNode;
+        const text = node.textContent.trim();
+        
+        if (!text) continue;
+        
+        // Check if we need a new page
+        if (y > pageHeight - margin) {
+          doc.addPage();
+          y = margin;
         }
-
-        if (data.feedback) {
-          const feedbackParts = data.feedback.split(/\n\s*\n/);
-          html += `<div style="margin-top: 30px;"><h4>📌 Smart Feedback</h4>`;
-          feedbackParts.forEach(p => html += `<p>${p.trim()}</p>`);
-          html += `</div>`;
-        }
-
-        if (data.projectIdeas) {
-          const ideas = data.projectIdeas.split(/\n\s*\d+[\.\)]\s*/g).map(p => p.trim()).filter(p => p.length > 10);
-          if (ideas.length) {
-            html += `<div style="margin-top: 20px;"><h4>🚀 Project Recommendations</h4>`;
-            html += ideas.map(p => `<p>${p}</p>`).join('');
-            html += `</div>`;
-          }
-        }
-
-        if (data.skillStrength) {
-          html += `<div style="margin-top: 30px;"><h4>📊 Skill Heatmap</h4><canvas id="skillChart" width="400" height="300"></canvas></div>`;
-        }
-
-        document.getElementById('result').innerHTML = html;
-        document.getElementById('controls').style.display = 'flex';
-
-        if (data.skillStrength) {
-          const ctx = document.getElementById('skillChart').getContext('2d');
-          new Chart(ctx, {
-            type: 'radar',
-            data: {
-              labels: Object.keys(data.skillStrength),
-              datasets: [{
-                label: 'Skill Strength',
-                data: Object.values(data.skillStrength),
-                fill: true,
-                backgroundColor: 'rgba(0, 122, 255, 0.2)',
-                borderColor: 'rgba(0, 122, 255, 1)',
-                pointBackgroundColor: 'rgba(0, 122, 255, 1)'
-              }]
-            },
-            options: {
-              responsive: true,
-              scales: {
-                r: {
-                  suggestedMin: 0,
-                  suggestedMax: 10,
-                  ticks: { stepSize: 1 }
-                }
-              }
-            }
+        
+        // Apply different styling based on parent element
+        if (parent.tagName === 'H1') {
+          doc.setFontSize(18);
+          doc.setFont('helvetica', 'bold');
+          doc.text(text, margin, y);
+          y += 10;
+        } else if (parent.tagName === 'H2') {
+          doc.setFontSize(14);
+          doc.setFont('helvetica', 'bold');
+          doc.text(text, margin, y);
+          y += 8;
+        } else if (parent.tagName === 'B' || parent.tagName === 'STRONG') {
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'bold');
+          doc.text(text, margin, y);
+          y += 5;
+        } else {
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'normal');
+          
+          // Handle line wrapping for long lines
+          const splitLines = doc.splitTextToSize(text, pageWidth - 2 * margin);
+          splitLines.forEach(line => {
+            doc.text(line, margin, y);
+            y += 5;
           });
         }
-
-        // ATS view
-        const atsRes = await fetch('/ats-scan', { method: 'POST', body: formData });
-        const atsData = await atsRes.json();
-        if (!atsData.error && atsData.atsSummary) {
-          const ats = atsData.atsSummary;
-          let atsHTML = `<h3>📄 ATS Summary View</h3>`;
-          atsHTML += `<p><strong>Name:</strong> ${ats.name || '-'}</p>`;
-          atsHTML += `<p><strong>Email:</strong> ${ats.email || '-'}</p>`;
-          atsHTML += `<p><strong>Phone:</strong> ${ats.phone || '-'}</p>`;
-
-          if (ats.experience?.length) {
-            atsHTML += `<h4>Experience:</h4><ul>`;
-            ats.experience.forEach(exp => {
-              atsHTML += `<li><strong>${exp.title}</strong> at ${exp.company} (${exp.dates})${exp.location ? ' – ' + exp.location : ''}</li>`;
-            });
-            atsHTML += `</ul>`;
-          }
-
-          if (ats.education?.length) {
-            atsHTML += `<h4>Education:</h4><ul>`;
-            ats.education.forEach(ed => {
-              atsHTML += `<li>${ed.degree} at ${ed.organization} ${ed.dates ? `(${ed.dates})` : ''}</li>`;
-            });
-            atsHTML += `</ul>`;
-          }
-
-          document.getElementById('atsView').innerHTML = atsHTML;
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        // Add spacing for certain elements
+        if (node.tagName === 'BR' || node.tagName === 'P' || node.tagName === 'DIV') {
+          y += 5;
+        } else if (node.tagName === 'H1' || node.tagName === 'H2') {
+          y += 5;
         }
-
-      } catch (err) {
-        console.error(err);
-        document.getElementById('result').innerHTML = '❌ An unexpected error occurred.';
       }
-    });
-  </script>
-</body>
-</html>
+    }
+    
+    // Save the PDF
+    doc.save('my_resume.pdf');
+  });
+  
+  // Function to send message to the chat API
+  async function sendMessage() {
+    const message = chatInput.value.trim();
+    if (!message) return;
+    
+    // Add user message to chat
+    addMessageToChat(message, 'user');
+    chatInput.value = '';
+    
+    // Show typing indicator
+    const typingIndicator = document.createElement('div');
+    typingIndicator.className = 'message ai-message typing-indicator';
+    typingIndicator.innerHTML = '<div class="message-content">Typing...</div>';
+    chatMessages.appendChild(typingIndicator);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    try {
+      // Get current resume content from editor
+      const currentResumeText = resumeEditor.innerText;
+      
+      // Send message to API with conversation history
+      const response = await fetch('/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          message,
+          resumeText: currentResumeText,
+          conversationHistory
+        })
+      });
+      
+      // Remove typing indicator
+      chatMessages.removeChild(typingIndicator);
+      
+      const data = await response.json();
+      
+      if (data.error) {
+        addMessageToChat('Sorry, there was an error processing your request.', 'ai');
+      } else {
+        // Add AI response to chat
+        addMessageToChat(data.reply, 'ai');
+        
+        // Update conversation history if provided
+        if (data.conversationHistory) {
+          conversationHistory = data.conversationHistory;
+        } else {
+          // If server doesn't return history, maintain it manually
+          conversationHistory.push(
+            { role: 'user', content: message },
+            { role: 'assistant', content: data.reply }
+          );
+        }
+      }
+    } catch (error) {
+      // Remove typing indicator if still present
+      if (typingIndicator.parentNode) {
+        chatMessages.removeChild(typingIndicator);
+      }
+      
+      console.error('Chat error:', error);
+      addMessageToChat('Sorry, there was an error connecting to the server.', 'ai');
+    }
+  }
+  
+  // Function to add a message to the chat
+  function addMessageToChat(content, sender) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${sender}-message`;
+    
+    const messageContent = document.createElement('div');
+    messageContent.className = 'message-content';
+    
+    // Process markdown-like formatting
+    let formattedContent = content
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
+      .replace(/\*(.*?)\*/g, '<em>$1</em>') // Italic
+      .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>') // Code blocks
+      .replace(/`(.*?)`/g, '<code>$1</code>') // Inline code
+      .replace(/\n/g, '<br>'); // Line breaks
+    
+    messageContent.innerHTML = formattedContent;
+    
+    messageDiv.appendChild(messageContent);
+    chatMessages.appendChild(messageDiv);
+    
+    // Scroll to bottom of chat
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+});
+
+// The file upload handler is already defined above
+
+</script>
