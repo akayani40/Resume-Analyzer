@@ -11,7 +11,7 @@ const PORT = 3000;
 
 const OPENAI_KEY = process.env.OPENAI_KEY;
 const openai = new OpenAI({ apiKey: OPENAI_KEY });
-const MOCK_MODE = false; 
+const MOCK_MODE = true; 
 
 app.use(cors());
 app.use(express.static('public'));

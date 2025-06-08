@@ -173,22 +173,29 @@ fileInput.addEventListener('change', async () => {
   clearInterval(interval);
   progressBar.style.width = '100%';
   progressText.innerText = '100%';
+  progressMessage.innerText = '✅ Done! Analyzing...';
+
+  // Fetch ATS data
+  const atsRes = await fetch('/ats-scan', { method: 'POST', body: formData });
+  const atsData = await atsRes.json();
+
+  // Now that all data is loaded, update the progress message
   progressMessage.innerText = '✅ Done! Displaying results...';
 
+  // Wait a moment to ensure all data is processed before showing the tabs
+  await new Promise(resolve => setTimeout(resolve, 1000));
+
+  // Show the tabs and content
   document.getElementById('controls').style.display = 'flex';
   toggleView('suggestionsView'); // TEMP: Show Suggestions tab directly
 
-
+  // Fade out the progress wrapper
   setTimeout(() => {
     progressWrapper.classList.add('fade-out');
     setTimeout(() => {
       progressWrapper.style.display = 'none';
     }, 500);
   }, 1200);
-
-  // Fetch ATS data
-  const atsRes = await fetch('/ats-scan', { method: 'POST', body: formData });
-  const atsData = await atsRes.json();
 
   if (!atsData.error && atsData.atsSummary) {
     const ats = atsData.atsSummary;
