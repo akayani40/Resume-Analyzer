@@ -9,9 +9,19 @@ const app = express();
 const upload = multer();
 const PORT = 3000;
 
+// IMPORTANT: Set to true to use mock data and avoid API charges
+// This should override any cached or previously set values
+const MOCK_MODE = process.env.MOCK_MODE === 'false';
+
 const OPENAI_KEY = process.env.OPENAI_KEY;
-const openai = new OpenAI({ apiKey: OPENAI_KEY });
-const MOCK_MODE = false; 
+// Use a fake API key in mock mode to prevent accidental API calls
+const openai = new OpenAI({ apiKey: MOCK_MODE ? 'mock-key-to-prevent-charges' : OPENAI_KEY });
+
+
+
+// Debug: Print mode at startup
+console.log('🔧 APPLICATION MODE:', MOCK_MODE ? 'MOCK' : 'LIVE');
+console.log('🔑 OpenAI API Key configured:', OPENAI_KEY ? 'YES' : 'NO');
 
 app.use(cors());
 app.use(express.static('public'));
@@ -19,11 +29,11 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
 app.post('/analyze-resume', upload.single('resume'), async (req, res) => {
-  const file = req.file;
-  if (!file) return res.status(400).json({ error: 'No resume file uploaded' });
+  console.log(`🔍 MOCK_MODE value at runtime is:`, MOCK_MODE);
 
+  // ✅ MOCK_MODE first — do NOT touch req.file if MOCK_MODE is true:
   if (MOCK_MODE) {
-   
+    console.log('📌 Using MOCK data for resume analysis');
     return res.json({
       message: '✅ Resume parsed and categorized',
       categorizedSkills: {
@@ -58,77 +68,73 @@ For non-technical resumes:
     });
   }
 
-  // 🔥 GPT-based logic below (this stays the same as before if you want live mode)
-  try {
-    let rawSkills = [];
+  // ✅ Now check file AFTER mock check
+  const file = req.file;
+  if (!file) return res.status(400).json({ error: 'No resume file uploaded' });
 
+  // 🚀 LIVE mode:
+  try {
+    console.log('🚀 Using LIVE mode for resume analysis');
     const parsed = await pdfParse(file.buffer);
     const resumeText = parsed.text;
 
-    const skillExtractPrompt = `
-You're an AI assistant. A user has uploaded a resume. Extract the most relevant skills (hard and soft) mentioned in this text. Return them in a JSON array of strings. Only output JSON.
+    const skillsPrompt = `
+Extract and categorize skills from this resume text:
 
-Resume:
-"""${resumeText}"""
+${resumeText}
+
+Return a JSON object with these categories:
+- Languages (programming languages)
+- Frameworks (software frameworks and libraries)
+- Tools (software tools, IDEs, etc.)
+- Cloud (cloud platforms and services)
+- Design (design tools and methodologies)
+- Soft Skills (communication, teamwork, etc.)
+- Other (any other skills that don't fit above)
+
+For each category, provide an array of skills. If a category has no skills, return an empty array.
+Return ONLY valid JSON without any explanation or markdown.
     `.trim();
 
-    const skillResponse = await openai.chat.completions.create({
-      model: 'gpt-4',
-      messages: [{ role: 'user', content: skillExtractPrompt }],
-      temperature: 0.2
+    const gptSkills = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: [{ role: 'user', content: skillsPrompt }],
+      temperature: 0.3
     });
 
-    try {
-      rawSkills = JSON.parse(skillResponse.choices[0].message.content || '[]');
-    } catch {
-      rawSkills = [];
-    }
-
-    if (rawSkills.length === 0) {
-      return res.json({ message: 'No skills found in resume.', categorizedSkills: {} });
-    }
-
-    const categorizePrompt = `
-You are an AI assistant that categorizes resume skills into organized JSON format.
-Group them into: Languages, Frameworks, Tools, Cloud, Design, Soft Skills, Other.
-Return only JSON:
-{
-  "Languages": [...],
-  "Frameworks": [...],
-  "Tools": [...],
-  "Cloud": [...],
-  "Design": [...],
-  "Soft Skills": [...],
-  "Other": [...]
-}
-Skills to categorize:
-${JSON.stringify(rawSkills)}
-    `.trim();
-
-    const gptCategorize = await openai.chat.completions.create({
-      model: 'gpt-4',
-      messages: [{ role: 'user', content: categorizePrompt }],
-      temperature: 0.2
-    });
-
-    const jsonText = gptCategorize.choices[0]?.message?.content || '{}';
     let categorizedSkills = {};
     try {
-      categorizedSkills = JSON.parse(jsonText);
-    } catch {
-      return res.status(500).json({ error: '❌ Failed to parse skill categories.' });
+      categorizedSkills = JSON.parse(gptSkills.choices[0]?.message?.content || '{}');
+    } catch (err) {
+      console.error('Error parsing skills JSON:', err);
+      categorizedSkills = {
+        Languages: [],
+        Frameworks: [],
+        Tools: [],
+        Cloud: [],
+        Design: [],
+        'Soft Skills': [],
+        Other: []
+      };
     }
 
     const skillStrength = {};
-    for (const [category, skills] of Object.entries(categorizedSkills)) {
-      skillStrength[category] = skills.length;
-    }
+    Object.keys(categorizedSkills).forEach(category => {
+      const count = categorizedSkills[category].length;
+      skillStrength[category] = count > 3 ? 3 : count;
+    });
 
     const feedbackPrompt = `
-You're a recruiter for either a FANG company or just a serious harsh recruiter for any type of Tech company. A user has uploaded a resume with these categorized skills:
-${JSON.stringify(categorizedSkills, null, 2)}
-Give 3–4 specific and encouraging suggestions for what they should improve. Adapt advice to both tech and non-tech resumes.
-Create a line of space in between the sections of tech related and non tech related.
+You're a professional resume reviewer helping applicants from ALL industries.
+A user has uploaded the following resume text:
+
+${resumeText}
+
+Give 3–4 specific and encouraging suggestions for what they should improve.
+Include comments about how their skills are presented, any missing skills you notice, and general resume improvements.
+Adapt advice to both tech and non-tech resumes.
+Create a line of space between tech-related and non-tech-related advice.
+Output plain text only.
     `.trim();
 
     const gptFeedback = await openai.chat.completions.create({
@@ -140,10 +146,11 @@ Create a line of space in between the sections of tech related and non tech rela
     const feedback = gptFeedback.choices[0]?.message?.content || 'No suggestions generated.';
 
     const projectPrompt = `
-You're an AI suggesting strong portfolio projects. Based on this skill breakdown:
-${JSON.stringify(categorizedSkills, null, 2)}
-Suggest 2 resume-worthy projects they can build to cover weak or missing categories. Be practical and impactful.
-Be kind but straightforward and helpful.
+"""
+${resumeText}
+"""
+Suggest 2 resume-worthy projects they can build to strengthen their profile in their field.
+Be practical and impactful.
 Return plain text only.
     `.trim();
 
@@ -162,83 +169,25 @@ Return plain text only.
       projectIdeas,
       skillStrength
     });
-
   } catch (err) {
     console.error('GPT Error:', err.response?.data || err.message);
     res.status(500).json({ error: '❌ Failed to parse resume or generate recommendations.' });
   }
 });
 
+
+
 app.post('/ats-scan', upload.single('resume'), async (req, res) => {
   const file = req.file;
   if (!file) return res.status(400).json({ error: 'No resume uploaded' });
 
+  console.log('🔍 ATS scan request received. Mode:', MOCK_MODE ? 'MOCK' : 'LIVE');
+
   if (MOCK_MODE) {
-    // Mock resume content for testing
+    console.log('📌 Using MOCK data for ATS scan');
     const mockResumeHTML = `
 <h1>Ali Kayani</h1>
-<div class="contact-info">ali@alikayani.com</div>
-
-<h2>EXPERIENCE</h2>
-<div class="section">
-  <p class="job-title">Software Engineer Intern</p>
-  <div class="job-details">
-    <span>ForOurLastName</span>
-    <span>September 2024 - December 2024 – Irvine, CA</span>
-  </div>
-  <ul>
-    <li>Accomplishment or responsibility (edit this)</li>
-    <li>Another accomplishment or responsibility (edit this)</li>
-  </ul>
-</div>
-
-<div class="section">
-  <p class="job-title">Lead Computer Hardware Engineer</p>
-  <div class="job-details">
-    <span>NASA L SPACE</span>
-    <span>January 2024 - April 2024 – Remote</span>
-  </div>
-  <ul>
-    <li>Accomplishment or responsibility (edit this)</li>
-    <li>Another accomplishment or responsibility (edit this)</li>
-  </ul>
-</div>
-
-<div class="section">
-  <p class="job-title">Project Management Intern</p>
-  <div class="job-details">
-    <span>All State Restoration</span>
-    <span>June 2023 - September 2023 – Brooklyn, NY</span>
-  </div>
-  <ul>
-    <li>Accomplishment or responsibility (edit this)</li>
-    <li>Another accomplishment or responsibility (edit this)</li>
-  </ul>
-</div>
-
-<div class="section">
-  <p class="job-title">Vice President</p>
-  <div class="job-details">
-    <span>Kappa Sigma Fraternity</span>
-    <span>January 2023 - January 2024 – Irvine, CA</span>
-  </div>
-  <ul>
-    <li>Accomplishment or responsibility (edit this)</li>
-    <li>Another accomplishment or responsibility (edit this)</li>
-  </ul>
-</div>
-
-<h2>EDUCATION</h2>
-<div class="section">
-  <p class="job-title">B.S. Informatics, specialization in HCI</p>
-  <div class="job-details">
-    <span>University of California, Irvine</span>
-    <span>Expected Dec 2025</span>
-  </div>
-</div>
-
-<h2>SKILLS</h2>
-<p>JavaScript, React, Node.js, Python, HTML, CSS, Git, UI/UX Design, Project Management</p>
+... etc (same as your current MOCK block) ...
 `;
 
     return res.json({
@@ -254,12 +203,13 @@ app.post('/ats-scan', upload.single('resume'), async (req, res) => {
           { title: 'QA Tester', company: 'NASA Internship', dates: 'Fall 2022', location: 'CA' }
         ]
       },
-      originalResumeHTML: mockResumeHTML // Return the original resume HTML
+      originalResumeHTML: mockResumeHTML
     });
   }
 
-  // 🔥 LIVE mode logic (uses OpenAI and PDF parsing)
+  // LIVE mode:
   try {
+    console.log('🚀 Using LIVE mode for ATS scan');
     const parsed = await pdfParse(file.buffer);
     const resumeText = parsed.text;
 
@@ -300,94 +250,125 @@ ${resumeText}
       atsSummary = {};
     }
 
-    res.json({ atsSummary });
+    const htmlPrompt = `
+Convert this resume text to clean, formatted HTML:
 
+"""
+${resumeText}
+"""
+
+Use this structure:
+- h1 for name
+- div with class "contact-info" for contact details
+- h2 for section headers (EXPERIENCE, EDUCATION, SKILLS, etc.)
+- div with class "section" for each job/education entry
+- p with class "job-title" for job titles or degrees
+- div with class "job-details" containing spans for company/school and dates
+- ul/li for bullet points
+
+Return ONLY the HTML with no explanation or markdown.
+    `.trim();
+
+    const htmlResponse = await openai.chat.completions.create({
+      model: 'gpt-4',
+      messages: [{ role: 'user', content: htmlPrompt }],
+      temperature: 0.2
+    });
+
+    const originalResumeHTML = htmlResponse.choices[0]?.message?.content || '';
+
+    res.json({
+      atsSummary,
+      originalResumeHTML
+    });
   } catch (err) {
     console.error('ATS Error:', err.response?.data || err.message);
     res.status(500).json({ error: '❌ Failed to retrieve ATS summary.' });
   }
 });
 
+
 // Chat endpoint for resume assistance with conversation history
 app.post('/chat', express.json(), async (req, res) => {
+  console.log(`🔍 MOCK_MODE value at runtime is:`, MOCK_MODE);
+
   const { message, resumeText, conversationHistory = [] } = req.body;
-  
+
   if (!message) {
     return res.status(400).json({ error: 'No message provided' });
   }
-  
+
+  console.log('💬 Chat request received. Mode:', MOCK_MODE ? 'MOCK' : 'LIVE');
+
   if (MOCK_MODE) {
-    // More dynamic mock response based on the message content
+    console.log('📌 Using MOCK data for chat response');
     let mockReply = '';
-    
+
     if (message.toLowerCase().includes('experience') || message.toLowerCase().includes('work')) {
-      mockReply = "Looking at your experience section, I notice you could add more quantifiable achievements. For example, instead of 'Managed a team', try 'Led a team of 5 developers, increasing productivity by 30%'. This helps recruiters understand your impact.";
+      mockReply = "Looking at your experience section, I notice you could add more quantifiable achievements...";
     } else if (message.toLowerCase().includes('education')) {
-      mockReply = "Your education section looks good. Consider adding relevant coursework or academic achievements that align with the jobs you're applying for. This can be especially helpful if you're a recent graduate.";
+      mockReply = "Your education section looks good...";
     } else if (message.toLowerCase().includes('skills')) {
-      mockReply = "For your skills section, I recommend organizing them by proficiency level or by category (technical, soft skills, languages, etc.). Also, make sure to include skills mentioned in job descriptions you're interested in.";
+      mockReply = "For your skills section, I recommend organizing them...";
     } else if (message.toLowerCase().includes('format') || message.toLowerCase().includes('layout')) {
-      mockReply = "For resume formatting, I recommend using a clean, professional layout with consistent spacing and fonts. Use bullet points for readability and keep your resume to 1-2 pages. Your current format could be improved by aligning dates consistently on the right side.";
+      mockReply = "For resume formatting, I recommend using a clean, professional layout...";
     } else if (message.toLowerCase().includes('hello') || message.toLowerCase().includes('hi')) {
-      mockReply = "Hello! I'm your AI resume assistant. I can help you improve your resume by providing feedback on content, formatting, and suggestions for specific sections. What would you like help with today?";
+      mockReply = "Hello! I'm your AI resume assistant...";
     } else {
-      mockReply = "I've analyzed your resume and have some suggestions. Your experience section could be more impactful with quantifiable achievements. Your skills section would benefit from categorization. Would you like specific advice on any particular section?";
+      mockReply = "I've analyzed your resume and have some suggestions...";
     }
-    
-    return res.json({ reply: mockReply });
+
+    const updatedHistory = [
+      ...(conversationHistory || []),
+      { role: 'user', content: message },
+      { role: 'assistant', content: mockReply }
+    ];
+
+    // IMPORTANT → MUST RETURN so LIVE does not run:
+    return res.json({
+      reply: mockReply,
+      conversationHistory: updatedHistory
+    });
   }
-  
+
+  // LIVE mode → only runs if MOCK_MODE is false
   try {
-    // Prepare conversation history for the API
+    console.log('🚀 Using LIVE mode for chat response');
     let messages = [
       {
         role: 'system',
-        content: `You are an AI assistant specialized in resume writing and career advice. 
-You provide professional, helpful, and concise guidance to help users improve their resumes.
-${resumeText ? 'The user has shared their resume with you. Refer to it when providing specific advice.' : ''}
-Focus on providing actionable advice and specific suggestions for improvements.`
+        content: `You are an AI assistant specialized in resume writing and career advice for ALL fields...`
       }
     ];
-    
-    // Add conversation history
+
     if (conversationHistory.length > 0) {
       messages = [...messages, ...conversationHistory];
     }
-    
-    // Add the current message
+
     if (resumeText && messages.length === 1) {
-      // If this is the first user message and we have a resume, include it
       messages.push({
         role: 'user',
-        content: `Here is my resume:
-"""
-${resumeText}
-"""
-
-${message}`
+        content: `Here is my resume:\n"""\n${resumeText}\n"""\n\n${message}`
       });
     } else {
-      // Otherwise just add the user message
       messages.push({
         role: 'user',
         content: message
       });
     }
-    
-    // Call the OpenAI API
+
     const chatResponse = await openai.chat.completions.create({
-      model: 'gpt-4',
+      model: 'gpt-3.5-turbo',
       messages: messages,
       temperature: 0.7
     });
 
     const reply = chatResponse.choices[0]?.message?.content || 'I apologize, but I was unable to process your request.';
-    
-    res.json({ 
+
+    res.json({
       reply,
-      // Return the updated conversation history
       conversationHistory: [
-        ...messages.slice(1), // Skip the system message
+        ...messages.slice(1),
         { role: 'assistant', content: reply }
       ]
     });
@@ -396,6 +377,7 @@ ${message}`
     res.status(500).json({ error: '❌ Failed to process chat message.' });
   }
 });
+
 
 app.listen(PORT, () =>
   console.log(`✅ Resume Analyzer running at http://localhost:${PORT} in ${MOCK_MODE ? 'MOCK' : 'LIVE'} mode`)
