@@ -17,7 +17,6 @@ This project is a **work in progress** and under **active development**. Feature
 ## 🛠️ Upcoming Plans
 
 - Improved UI/UX for a smoother experience
-- Skill heatmaps and radar charts
 - Real-time ATS scoring
 - Support for job description comparison
 - Multi-major support: Tech, Business, Science, Other
