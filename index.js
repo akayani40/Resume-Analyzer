@@ -11,7 +11,7 @@ const PORT = 3000;
 
 // IMPORTANT: Set to true to use mock data and avoid API charges
 // This should override any cached or previously set values
-const MOCK_MODE = process.env.MOCK_MODE === 'false';
+const MOCK_MODE = process.env.MOCK_MODE === 'true';
 
 const OPENAI_KEY = process.env.OPENAI_KEY;
 // Use a fake API key in mock mode to prevent accidental API calls

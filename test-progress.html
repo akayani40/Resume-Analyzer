@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Test Progress Display</title>
+  <link rel="stylesheet" href="public/style.css" />
+  <style>
+    /* Additional styles for testing */
+    .test-buttons {
+      margin: 20px 0;
+      text-align: center;
+    }
+    .test-button {
+      padding: 10px 15px;
+      margin: 0 10px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div style="text-align: center; margin-bottom: 60px;">
+      <h1 style="font-size: 48px; margin: 0;">ParsePro</h1>
+      <p style="font-size: 18px; margin-top: 8px; color: var(--text); opacity: 0.9;">
+        Because parsing isn't enough — you need insight. See what recruiters (and AI) see.
+      </p>
+      <div style="width: 60px; height: 1px; background-color: var(--text); opacity: 0.2; margin: 20px auto;"></div>
+    </div>
+
+    <div class="upload-center" id="uploadUI">
+      <form id="resumeForm" enctype="multipart/form-data">
+        <div class="upload-area" id="drop-zone">
+          <div class="upload-icon">📄</div>
+          <p class="upload-text">Select or drag your file</p>
+          <input id="resumeInput" type="file" name="resume" accept=".pdf,.docx,.txt" required />
+        </div>
+      </form>
+    </div>
+
+    <div id="progressWrapper" class="fade" style="display: none; text-align: center;">
+      <p id="progressMessage" class="upload-text">Uploading and analyzing your resume... Getting you the best results.</p>
+      <div id="progressText">0%</div>
+      <div class="progress-container" id="progressBarContainer">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+      <p class="wait-message">Please wait 15-30 seconds for everything to load. Your resume is processed securely — no data is stored.</p>
+    </div>
+
+    <div class="test-buttons">
+      <button class="test-button" id="showProgress">Show Progress</button>
+      <button class="test-button" id="showComplete">Show Complete</button>
+      <button class="test-button" id="hideProgress">Hide Progress</button>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <div class="footer-content">
+      <a href="#" class="footer-link">About ParsePro</a>
+      <span class="footer-divider">|</span>
+      <a href="#" class="footer-link">How It Works</a>
+      <span class="footer-divider">|</span>
+      <a href="#" class="footer-link">Contact</a>
+      <span class="footer-divider">|</span>
+      <a href="#" class="footer-link">GitHub</a>
+    </div>
+  </footer>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const progressWrapper = document.getElementById('progressWrapper');
+      const progressBar = document.getElementById('progressBar');
+      const progressText = document.getElementById('progressText');
+      const progressMessage = document.getElementById('progressMessage');
+      const uploadUI = document.getElementById('uploadUI');
+
+      // Show progress bar at 50%
+      document.getElementById('showProgress').addEventListener('click', () => {
+        uploadUI.classList.add('fade-out');
+        progressWrapper.style.display = 'block';
+        progressWrapper.classList.add('show');
+        progressBar.style.width = '50%';
+        progressText.innerText = '50%';
+        progressMessage.innerText = 'Uploading and analyzing your resume...';
+      });
+
+      // Show progress bar at 100% with "Done! Displaying results..."
+      document.getElementById('showComplete').addEventListener('click', () => {
+        uploadUI.classList.add('fade-out');
+        progressWrapper.style.display = 'block';
+        progressWrapper.classList.add('show');
+        progressBar.style.width = '100%';
+        progressText.innerText = '100%';
+        progressMessage.innerText = '✅ Done! Displaying results...';
+      });
+
+      // Hide progress bar
+      document.getElementById('hideProgress').addEventListener('click', () => {
+        progressWrapper.classList.add('fade-out');
+        setTimeout(() => {
+          progressWrapper.style.display = 'none';
+          uploadUI.classList.remove('fade-out');
+        }, 500);
+      });
+    });
+  </script>
+</body>
+</html>
