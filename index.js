@@ -191,19 +191,23 @@ app.post('/ats-scan', upload.single('resume'), async (req, res) => {
 `;
 
     return res.json({
-      atsSummary: {
-        name: 'Ali Kayani',
-        email: 'ali.kayani@example.com',
-        phone: '(555) 123-4567',
-        education: [
-          { organization: 'UC Irvine', degree: 'B.S. Informatics', dates: '2020 - 2024' }
-        ],
-        experience: [
-          { title: 'Product Intern', company: 'Kiick on Fire', dates: 'Summer 2023', location: 'Remote' },
-          { title: 'QA Tester', company: 'NASA Internship', dates: 'Fall 2022', location: 'CA' }
-        ]
+      atsEvaluation: {
+        inferredField: 'Software Engineering',
+        atsScore: 82,
+        recruiterEngagementLikelihood: 'High – clear metrics and strong stack',
+        estimatedRecruiterReadTimeSeconds: 35,
+        toneAnalysis: 'Confident',
+        pros: ['Uses metrics', 'Clear tech stack'],
+        cons: ['Some passive voice'],
+        redFlags: ['Minor employment gap'],
+        missingKeywords: ['Docker', 'Kubernetes'],
+        suggestedImprovements: ['Add cloud metrics', 'Quantify project impact'],
+        fieldSpecificTips: ['Highlight CI/CD experience'],
+        psychologicalInsights: ['Shows growth mindset'],
+        formattingTips: ['Ensure consistent bullet alignment']
       },
-      originalResumeHTML: mockResumeHTML
+      originalResumeHTML: mockResumeHTML,
+      plainTextResume: 'Mock resume text here'
     });
   }
 
@@ -214,24 +218,41 @@ app.post('/ats-scan', upload.single('resume'), async (req, res) => {
     const resumeText = parsed.text;
 
     const atsPrompt = `
-You're an ATS scanner. Extract the following from this resume text:
+You are the most advanced Applicant Tracking System (ATS) simulator and recruiter advisor on the planet.
 
-- Full name
-- Email
-- Phone number
-- Education history (school, degree, dates)
-- Work experience (title, company, dates, location)
+Your task is to analyze the following resume and provide an **exhaustive professional evaluation** that goes far beyond standard ATS feedback. DO NOT include or repeat name, contact info, skills, certifications, or experience entries already visible in the resume. Your goal is to provide hidden, high-level insights that both ATS software and experienced human recruiters would use to evaluate this resume.
 
-Return this in clean JSON format:
+You must also:
+- Infer the most likely career field or job target based on resume content.
+- Tailor all advice to that career path.
+- Identify subtle weaknesses even if the resume seems strong.
+- Avoid generic fluff — prioritize actionable, field-specific, high-ROI feedback.
+- Suggest improvements to tone, narrative voice, and keyword density.
+- Flag any subconscious negative impressions that might arise.
+- Incorporate behavioral psychology or recruiter heuristics where possible.
+- Mention layout or formatting blockers that could hinder parsing.
+- Point out stylistic choices that might affect perceptions (e.g., sentence complexity, passive voice, overused buzzwords).
+- Deliver feedback that will help the user **stand out from the top 5% of resumes** in their target field.
+
+Return your output as clean, valid JSON in the following format:
+
 {
-  "name": "",
-  "email": "",
-  "phone": "",
-  "education": [ { "organization": "", "degree": "", "dates": "" } ],
-  "experience": [ { "title": "", "company": "", "dates": "", "location": "" } ]
+  "inferredField": "",
+  "atsScore": 0,
+  "recruiterEngagementLikelihood": "",
+  "estimatedRecruiterReadTimeSeconds": 0,
+  "toneAnalysis": "",
+  "pros": [],
+  "cons": [],
+  "redFlags": [],
+  "missingKeywords": [],
+  "suggestedImprovements": [],
+  "fieldSpecificTips": [],
+  "psychologicalInsights": [],
+  "formattingTips": []
 }
 
-Resume:
+Here is the resume to analyze:
 """
 ${resumeText}
 """
@@ -243,11 +264,11 @@ ${resumeText}
       temperature: 0.2
     });
 
-    let atsSummary = {};
+    let atsEvaluation = {};
     try {
-      atsSummary = JSON.parse(atsResponse.choices[0]?.message?.content || '{}');
+      atsEvaluation = JSON.parse(atsResponse.choices[0]?.message?.content || '{}');
     } catch {
-      atsSummary = {};
+      atsEvaluation = {};
     }
 
     const htmlPrompt = `
@@ -278,8 +299,9 @@ Return ONLY the HTML with no explanation or markdown.
     const originalResumeHTML = htmlResponse.choices[0]?.message?.content || '';
 
     res.json({
-      atsSummary,
-      originalResumeHTML
+      atsEvaluation,
+      originalResumeHTML,
+      plainTextResume: resumeText
     });
   } catch (err) {
     console.error('ATS Error:', err.response?.data || err.message);
@@ -378,6 +400,56 @@ app.post('/chat', express.json(), async (req, res) => {
   }
 });
 
+// Compare resume to job description
+app.post('/compare-jd', express.json(), async (req, res) => {
+  const { resumeText, jobDescription } = req.body;
+  if (!resumeText || !jobDescription) {
+    return res.status(400).json({ error: 'Both resumeText and jobDescription are required' });
+  }
+
+  // Mock mode quick response
+  if (MOCK_MODE) {
+    return res.json({
+      matchedSkills: ['JavaScript', 'React'],
+      missingSkills: ['Docker', 'AWS'],
+      overallMatch: '65%'
+    });
+  }
+
+  try {
+    const prompt = `Compare the following resume with the job description.
+
+RESUME:
+"""
+${resumeText}
+"""
+
+JOB DESCRIPTION:
+"""
+${jobDescription}
+"""
+
+1. List up to 10 skills/keywords that appear in BOTH, label as Matched.
+2. List up to 10 important skills from JD that are MISSING in resume, label as Missing.
+3. Give an overall match percentage (rough estimate).
+Return JSON with keys matchedSkills, missingSkills, overallMatch.`;
+
+    const resp = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.3
+    });
+
+    let data = {};
+    try { data = JSON.parse(resp.choices[0]?.message?.content || '{}'); }
+    catch { data = { error: 'Failed to parse compare response' }; }
+
+    res.json(data);
+  } catch(err) {
+    console.error('Compare JD Error:', err.response?.data || err.message);
+    res.status(500).json({ error: 'Failed to compare job description.' });
+  }
+});
 
 app.listen(PORT, () =>
   console.log(`✅ Resume Analyzer running at http://localhost:${PORT} in ${MOCK_MODE ? 'MOCK' : 'LIVE'} mode`)

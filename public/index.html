@@ -18,6 +18,10 @@
     <span class="slider round"></span>
   </label>
 
+  <div id="statusBubble" class="status-bubble">
+    ⚠️ Parser temporarily offline while we resolve OpenAI API issues. Thanks for your patience!
+  </div>
+
   <div class="container">
     <div style="text-align: center; margin-bottom: 60px;">
       <h1 style="font-size: 48px; margin: 0;">ParsePro</h1>
@@ -30,7 +34,7 @@
     <!-- Move #controls here -->
     <div id="controls" style="display: none; gap: 10px; margin-top: 0;">
       <button onclick="toggleView('atsView')">📄 ATS View</button>
-      <button onclick="toggleView('suggestionsView')">💡 Suggestions</button>
+      <button onclick="toggleView('jobMatchView')">🧩 Job Match</button>
       <button onclick="toggleView('chatView')">💬 Chat & Edit</button>
     </div>
 
@@ -50,11 +54,18 @@
       <div class="progress-container" id="progressBarContainer">
         <div class="progress-bar" id="progressBar"></div>
       </div>
-      <p class="wait-message">Please wait 15-30 seconds for everything to load. Your resume is processed securely — no data is stored.</p>
+      <p class="wait-message">Please wait up to 2 minutes for everything to load. Doing our best to provide the best results.</p>
     </div>
 
     <div id="atsView" style="display: none;"></div>
-    <div id="suggestionsView" style="display: none;"></div>
+    <div id="jobMatchView" style="display: none;">
+      <div class="content-card">
+        <h3>🧩 Compare to Job Description</h3>
+        <textarea id="jdInput" style="width:100%;min-height:120px;" placeholder="Paste job description here..."></textarea>
+        <button id="compareBtn" class="analyze-btn" style="margin-top:10px;">Compare</button>
+        <div id="compareResult" style="margin-top:20px;"></div>
+      </div>
+    </div>
     <div id="chatView" style="display: none;">
       <div class="chat-resume-container">
         <div class="chat-section">
@@ -566,33 +577,28 @@ try {
 
   // Show the tabs and content
   controls.style.display = 'flex';
-  toggleView('suggestionsView'); // TEMP: Show Suggestions tab directly
+  toggleView('jobMatchView'); // TEMP: Show Job Match tab directly
 
-  if (!atsData.error && atsData.atsSummary) {
-    const ats = atsData.atsSummary;
-    let atsHTML = `<h3>📄 ATS Summary View</h3>`;
-    atsHTML += `<p><strong>Name:</strong> ${ats.name || '-'}</p>`;
-    atsHTML += `<p><strong>Email:</strong> ${ats.email || '-'}</p>`;
-    atsHTML += `<p><strong>Phone:</strong> ${ats.phone || '-'}</p>`;
+  if (!atsData.error && atsData.atsEvaluation) {
+    const ev = atsData.atsEvaluation;
+    let atsHTML = `<h3>📄 ATS Evaluation</h3>`;
+    atsHTML += `<p><strong>Inferred Field:</strong> ${ev.inferredField||'-'}</p>`;
+    atsHTML += `<p><strong>ATS Score:</strong> ${ev.atsScore||'-'}</p>`;
+    atsHTML += `<p><strong>Recruiter Engagement:</strong> ${ev.recruiterEngagementLikelihood||'-'}</p>`;
+    atsHTML += `<p><strong>Tone:</strong> ${ev.toneAnalysis||'-'}</p>`;
 
-    if (ats.experience?.length) {
-      atsHTML += `<h4>Experience:</h4><ul>`;
-      ats.experience.forEach(exp => {
-        atsHTML += `<li><strong>${exp.title}</strong> at ${exp.company} (${exp.dates})${exp.location ? ' – ' + exp.location : ''}</li>`;
-      });
-      atsHTML += `</ul>`;
-    }
-
-    if (ats.education?.length) {
-      atsHTML += `<h4>Education:</h4><ul>`;
-      ats.education.forEach(ed => {
-        atsHTML += `<li>${ed.degree} at ${ed.organization} ${ed.dates ? `(${ed.dates})` : ''}</li>`;
-      });
-      atsHTML += `</ul>`;
-    }
+    const listSection = (title, arr) => arr&&arr.length ? `<h4>${title}</h4><ul>${arr.map(i=>`<li>${i}</li>`).join('')}</ul>` : '';
+    atsHTML += listSection('Pros', ev.pros);
+    atsHTML += listSection('Cons', ev.cons);
+    atsHTML += listSection('Red Flags', ev.redFlags);
+    atsHTML += listSection('Missing Keywords', ev.missingKeywords);
+    atsHTML += listSection('Suggested Improvements', ev.suggestedImprovements);
+    atsHTML += listSection('Field Specific Tips', ev.fieldSpecificTips);
+    atsHTML += listSection('Psychological Insights', ev.psychologicalInsights);
+    atsHTML += listSection('Formatting Tips', ev.formattingTips);
 
     const atsDiv = document.getElementById('atsView');
-    atsDiv.innerHTML = atsHTML;
+    atsDiv.innerHTML = `<div class="content-card">${atsHTML}</div>`;
     atsDiv.classList.add('fade-in');
     
     // Use the original resume HTML if available, otherwise generate a formatted resume
@@ -604,15 +610,15 @@ try {
       let resumeHTML = '';
       
       // Header with name and contact info
-      if (ats.name) {
-        resumeHTML += `<h1>${ats.name}</h1>`;
+      if (ev.name) {
+        resumeHTML += `<h1>${ev.name}</h1>`;
         
         // Contact info section
         let contactInfo = '';
-        if (ats.email) contactInfo += ats.email;
-        if (ats.phone) {
+        if (ev.email) contactInfo += ev.email;
+        if (ev.phone) {
           if (contactInfo) contactInfo += ' | ';
-          contactInfo += ats.phone;
+          contactInfo += ev.phone;
         }
         
         if (contactInfo) {
@@ -621,10 +627,10 @@ try {
       }
       
       // Experience section
-      if (ats.experience?.length) {
+      if (ev.experience?.length) {
         resumeHTML += `<h2>EXPERIENCE</h2>`;
         
-        ats.experience.forEach(exp => {
+        ev.experience.forEach(exp => {
           resumeHTML += `<div class="section">`;
           resumeHTML += `<p class="job-title">${exp.title}</p>`;
           resumeHTML += `<div class="job-details">`;
@@ -640,10 +646,10 @@ try {
       }
       
       // Education section
-      if (ats.education?.length) {
+      if (ev.education?.length) {
         resumeHTML += `<h2>EDUCATION</h2>`;
         
-        ats.education.forEach(ed => {
+        ev.education.forEach(ed => {
           resumeHTML += `<div class="section">`;
           resumeHTML += `<p class="job-title">${ed.degree}</p>`;
           resumeHTML += `<div class="job-details">`;
@@ -663,34 +669,35 @@ try {
     }
   }
 
-  if (data.projectIdeas) {
-    const suggestionsDiv = document.getElementById('suggestionsView');
-    let projectIdeasHTML = '';
-    
-    // Parse project ideas into a more structured format
-    if (typeof data.projectIdeas === 'string') {
-      // Split by lines and filter out empty lines
-      const lines = data.projectIdeas.split('\n').filter(line => line.trim());
-      
-      lines.forEach(line => {
-        // Check if line starts with "Project" or contains a project number
-        if (line.toLowerCase().includes('project') || /^\d+\./.test(line)) {
-          projectIdeasHTML += `<h4>${line}</h4>`;
-        } else {
-          projectIdeasHTML += `<p>${line}</p>`;
-        }
-      });
-    } else {
-      // If it's not a string, just display it as is
-      projectIdeasHTML = `<p>${data.projectIdeas}</p>`;
+  // Compare JD button
+  document.getElementById('compareBtn').addEventListener('click', async () => {
+    const jd = document.getElementById('jdInput').value.trim();
+    if (!jd) return alert('Please paste a job description first.');
+    if (!window.__plainResumeText) return alert('Resume text not available yet.');
+    document.getElementById('compareBtn').disabled = true;
+    const res = await fetch('/compare-jd', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resumeText: window.__plainResumeText, jobDescription: jd })
+    });
+    const data = await res.json();
+    document.getElementById('compareBtn').disabled = false;
+    if (data.error) return alert(data.error);
+    let html = '';
+    if (data.matchedSkills) {
+      html += `<h4>Matched Skills (${data.matchedSkills.length})</h4><ul>${data.matchedSkills.map(s=>`<li>${s}</li>`).join('')}</ul>`;
     }
-    
-    suggestionsDiv.innerHTML = `
-      <h3>💡 Project Suggestions</h3>
-      ${projectIdeasHTML}
-    `;
-    suggestionsDiv.classList.add('fade-in');
-  }
+    if (data.missingSkills) {
+      html += `<h4>Missing Skills (${data.missingSkills.length})</h4><ul>${data.missingSkills.map(s=>`<li>${s}</li>`).join('')}</ul>`;
+    }
+    if (data.overallMatch) {
+      html += `<p><strong>Overall Match:</strong> ${data.overallMatch}</p>`;
+    }
+    document.getElementById('compareResult').innerHTML = html;
+  });
+
+  // Store plain resume text after ATS scan success
+  window.__plainResumeText = atsData.plainTextResume || '';
 
 } catch (err) {
   console.error(err);
@@ -703,7 +710,7 @@ try {
 });
 
 function toggleView(view) {
-  const views = ['atsView', 'suggestionsView', 'chatView'];
+  const views = ['atsView', 'jobMatchView', 'chatView'];
   views.forEach(id => {
     const el = document.getElementById(id);
     const btn = document.querySelector(`button[onclick="toggleView('${id}')"]`);
