@@ -951,10 +951,14 @@ function showPage(pageId) {
 
 // Close page when clicking outside
 document.addEventListener('click', (e) => {
-  if (e.target.classList.contains('footer-link')) {
-    return;
-  }
-  if (!e.target.closest('.page-content') && !e.target.closest('.footer-link')) {
+  // Ignore clicks on footer links (they have their own handler)
+  if (e.target.classList.contains('footer-link')) return;
+
+  // Ignore clicks on the light/dark mode toggle switch
+  if (e.target.closest('.switch')) return;
+
+  // If the click happened outside the page-content area, hide the open page section
+  if (!e.target.closest('.page-content')) {
     document.getElementById('pageContent').style.display = 'none';
   }
 });
@@ -994,15 +998,41 @@ const handleFooterVisibility = () => {
 handleFooterVisibility();
 window.addEventListener('scroll', handleFooterVisibility);
 
-// Contact form submission animation
+// AJAX submit contact form to Formspree (no page reload)
 const contactForm = document.getElementById('contactForm');
 if (contactForm) {
-  contactForm.addEventListener('submit', () => {
-    contactForm.classList.add('sent');
-    const msg = document.createElement('p');
-    msg.className = 'success-msg';
-    msg.textContent = '✅ Message sent! Thank you.';
-    contactForm.parentElement.appendChild(msg);
+  contactForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(contactForm);
+    const action = contactForm.getAttribute('action');
+    try {
+      await fetch(action, {
+        method: 'POST',
+        body: formData,
+        headers: { 'Accept': 'application/json' }
+      });
+      contactForm.classList.add('sent');
+      const msg = document.createElement('p');
+      msg.className = 'success-msg';
+      msg.textContent = '✅ Message sent! Thank you.';
+      contactForm.parentElement.appendChild(msg);
+      let cooldown = 10;
+      const btn = contactForm.querySelector('button[type="submit"]');
+      if (btn) btn.disabled = true;
+      const interval = setInterval(()=>{
+        cooldown--;
+        msg.textContent = `✅ Message sent! You can send another in ${cooldown}s`;
+        if(cooldown<=0){
+          clearInterval(interval);
+          msg.remove();
+          contactForm.reset();
+          contactForm.classList.remove('sent');
+          if(btn) btn.disabled = false;
+        }
+      },1000);
+    } catch(err) {
+      alert('Failed to send message. Please try again later.');
+    }
   });
 }
 
