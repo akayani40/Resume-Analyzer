@@ -18,9 +18,11 @@
     <span class="slider round"></span>
   </label>
 
+  <!--
   <div id="statusBubble" class="status-bubble">
     ⚠️ Parser temporarily offline while we resolve OpenAI API issues. Thanks for your patience!
   </div>
+  -->
 
   <div class="container">
     <div style="text-align: center; margin-bottom: 60px;">
@@ -179,10 +181,10 @@
               </div>
             </div>
           </div>
-          <form class="contact-form">
-            <input type="text" placeholder="Your Name" required>
-            <input type="email" placeholder="Your Email" required>
-            <textarea placeholder="Your Message" required></textarea>
+          <form class="contact-form" id="contactForm" action="https://formspree.io/f/xblyagvn" method="POST">
+            <input type="text" name="name" placeholder="Your Name" required>
+            <input type="email" name="email" placeholder="Your Email" required>
+            <textarea name="message" placeholder="Your Message" required></textarea>
             <button type="submit">Send Message</button>
           </form>
         </div>
@@ -991,5 +993,17 @@ const handleFooterVisibility = () => {
 // Initial check and attach listener
 handleFooterVisibility();
 window.addEventListener('scroll', handleFooterVisibility);
+
+// Contact form submission animation
+const contactForm = document.getElementById('contactForm');
+if (contactForm) {
+  contactForm.addEventListener('submit', () => {
+    contactForm.classList.add('sent');
+    const msg = document.createElement('p');
+    msg.className = 'success-msg';
+    msg.textContent = '✅ Message sent! Thank you.';
+    contactForm.parentElement.appendChild(msg);
+  });
+}
 
 </script>

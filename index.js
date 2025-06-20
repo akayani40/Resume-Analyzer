@@ -17,7 +17,7 @@ const OPENAI_KEY = process.env.OPENAI_KEY;
 // Use a fake API key in mock mode to prevent accidental API calls
 const openai = new OpenAI({ apiKey: MOCK_MODE ? 'mock-key-to-prevent-charges' : OPENAI_KEY });
 
-
+const ADV_MODEL = process.env.ADV_MODEL || 'gpt-3.5-turbo';
 
 // Debug: Print mode at startup
 console.log('🔧 APPLICATION MODE:', MOCK_MODE ? 'MOCK' : 'LIVE');
@@ -138,7 +138,7 @@ Output plain text only.
     `.trim();
 
     const gptFeedback = await openai.chat.completions.create({
-      model: 'gpt-4',
+      model: ADV_MODEL,
       messages: [{ role: 'user', content: feedbackPrompt }],
       temperature: 0.5
     });
@@ -155,7 +155,7 @@ Return plain text only.
     `.trim();
 
     const gptProjects = await openai.chat.completions.create({
-      model: 'gpt-4',
+      model: ADV_MODEL,
       messages: [{ role: 'user', content: projectPrompt }],
       temperature: 0.6
     });
@@ -259,7 +259,7 @@ ${resumeText}
     `.trim();
 
     const atsResponse = await openai.chat.completions.create({
-      model: 'gpt-4',
+      model: ADV_MODEL,
       messages: [{ role: 'user', content: atsPrompt }],
       temperature: 0.2
     });
@@ -291,7 +291,7 @@ Return ONLY the HTML with no explanation or markdown.
     `.trim();
 
     const htmlResponse = await openai.chat.completions.create({
-      model: 'gpt-4',
+      model: ADV_MODEL,
       messages: [{ role: 'user', content: htmlPrompt }],
       temperature: 0.2
     });
