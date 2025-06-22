@@ -26,8 +26,26 @@
   -->
 
   <div class="container">
-    <div style="text-align: center; margin-bottom: 60px;">
-      <img src="logo.svg" alt="ParsePro logo" class="logo-img" />
+<div style="text-align: center; margin-bottom: 60px;">
+      <!-- Inline SVG logo with animated circles -->
+      <svg class="logo-svg" xmlns="http://www.w3.org/2000/svg" width="560" height="100" viewBox="0 0 560 100">
+        <defs>
+          <style>
+            .dark-circle{fill:#1a1a1a}
+            .yellow-circle{fill:#69995D}
+            .white-text{fill:#fff;font-family:Helvetica,Arial,sans-serif;font-size:42px;font-weight:700;dominant-baseline:middle;text-anchor:middle}
+            .black-text{fill:#000;font-family:Helvetica,Arial,sans-serif;font-size:42px;font-weight:700;dominant-baseline:middle;text-anchor:middle}
+          </style>
+        </defs>
+        <g class="logo-circle delay0"><circle class="dark-circle" cx="30" cy="50" r="30"/><text class="white-text" x="30" y="52">P</text></g>
+        <g class="logo-circle delay1"><circle class="dark-circle" cx="100" cy="50" r="30"/><text class="white-text" x="100" y="52">A</text></g>
+        <g class="logo-circle delay2"><circle class="dark-circle" cx="170" cy="50" r="30"/><text class="white-text" x="170" y="52">R</text></g>
+        <g class="logo-circle delay3"><circle class="dark-circle" cx="240" cy="50" r="30"/><text class="white-text" x="240" y="52">S</text></g>
+        <g class="logo-circle delay4"><circle class="dark-circle" cx="310" cy="50" r="30"/><text class="white-text" x="310" y="52">E</text></g>
+        <g class="logo-circle delay5"><circle class="yellow-circle" cx="380" cy="50" r="30"/><text class="black-text" x="380" y="52">P</text></g>
+        <g class="logo-circle delay6"><circle class="yellow-circle" cx="450" cy="50" r="30"/><text class="black-text" x="450" y="52">R</text></g>
+        <g class="logo-circle delay7"><circle class="yellow-circle" cx="520" cy="50" r="30"/><text class="black-text" x="520" y="52">O</text></g>
+      </svg>
       <p style="font-size: 18px; margin-top: 8px; color: var(--text); opacity: 0.9;">
         Because parsing isn't enough — you need insight. See what recruiters (and AI) see.
       </p>
@@ -41,22 +59,22 @@
       <button onclick="toggleView('chatView')">💬 Chat & Edit</button>
     </div>
 
-    <div class="upload-center" id="uploadUI">
-      <form id="resumeForm" enctype="multipart/form-data">
-        <div class="upload-area" id="drop-zone">
-          <div class="upload-icon">📄</div>
-          <p class="upload-text">Select or drag your file</p>
-          <input id="resumeInput" type="file" name="resume" accept=".pdf,.docx,.txt" required />
-        </div>
-      </form>
+<div class="upload-center" id="uploadUI">
+  <form id="resumeForm" enctype="multipart/form-data">
+    <div class="upload-area" id="drop-zone">
+      <div class="upload-icon">📄</div>
+      <p class="upload-text">Select or drag your file</p>
+      <input id="resumeInput" type="file" name="resume" accept=".pdf,.docx,.txt" required />
     </div>
+  </form>
+</div>
 
-    <div id="progressWrapper" class="fade" style="display: none; text-align: center;">
-      <p id="progressMessage" class="upload-text">Uploading and analyzing your resume... Getting you the best results.</p>
-      <div id="progressText">0%</div>
-      <div class="progress-container" id="progressBarContainer">
-        <div class="progress-bar" id="progressBar"></div>
-      </div>
+<div id="progressWrapper" class="fade" style="display: none; text-align: center;">
+  <p id="progressMessage" class="upload-text">Uploading and analyzing your resume... Getting you the best results.</p>
+  <div id="progressText">0%</div>
+  <div class="progress-container" id="progressBarContainer">
+    <div class="progress-bar" id="progressBar"></div>
+  </div>
       <p class="wait-message">Please wait up to 2 minutes for everything to load. Doing our best to provide the best results.</p>
     </div>
 
@@ -463,13 +481,42 @@
       position: relative;
       z-index: 2;
     }
-    .logo-img {
+    .logo-svg {
       width: 400px;
       max-width: 90%;
       height: auto;
       display: block;
       margin: 0 auto;
-      animation: fadeIn 0.8s ease-in-out;
+      overflow: visible; /* allow circles to move without being clipped */
+    }
+
+    /* Bounce-in animation */
+    @keyframes bounceInOnce {
+      0% { opacity: 0; transform: translateY(30px) scale(0.9); }
+      60% { opacity: 1; transform: translateY(-10px) scale(1.05); }
+      80% { transform: translateY(4px) scale(0.98); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .logo-circle {
+      opacity: 0;
+      transform-box: fill-box;
+      transform-origin: center bottom;
+      animation: bounceInOnce 0.7s ease-out forwards;
+      transition: transform 0.25s ease;
+    }
+    .delay0 { animation-delay: 0.05s; }
+    .delay1 { animation-delay: 0.15s; }
+    .delay2 { animation-delay: 0.25s; }
+    .delay3 { animation-delay: 0.35s; }
+    .delay4 { animation-delay: 0.45s; }
+    .delay5 { animation-delay: 0.55s; }
+    .delay6 { animation-delay: 0.65s; }
+    .delay7 { animation-delay: 0.75s; }
+
+    /* Hover lift */
+    .logo-circle:hover {
+      transform: translateY(-8px) scale(1.05);
     }
   </style>
 
@@ -543,7 +590,7 @@ fileInput.addEventListener('change', async () => {
   progressText.innerText = progress + '%';
 }, 120);
 
-try {
+  try {
   const res = await fetch('/analyze-resume', { method: 'POST', body: formData });
   const data = await res.json();
 
@@ -573,8 +620,8 @@ try {
   }, 400);
 
   // Remove the progress wrapper from DOM after transition
-  setTimeout(() => {
-    progressWrapper.style.display = 'none';
+    setTimeout(() => {
+      progressWrapper.style.display = 'none';
     // Remove centered-tabs class so tabs move up
     controls.classList.remove('centered-tabs');
     controls.style.marginTop = '0';
@@ -597,16 +644,16 @@ try {
     atsHTML += `<p><strong>ATS Score:</strong> ${ev.atsScore||'-'}</p>`;
     atsHTML += `<p><strong>Recruiter Engagement:</strong> ${ev.recruiterEngagementLikelihood||'-'}</p>`;
     atsHTML += `<p><strong>Tone:</strong> ${ev.toneAnalysis||'-'}</p>`;
+    atsHTML += `<p><strong>Risk Level:</strong> ${ev.riskLevel||'-'}</p>`;
 
     const listSection = (title, arr) => arr&&arr.length ? `<h4>${title}</h4><ul>${arr.map(i=>`<li>${i}</li>`).join('')}</ul>` : '';
-    atsHTML += listSection('Pros', ev.pros);
-    atsHTML += listSection('Cons', ev.cons);
     atsHTML += listSection('Red Flags', ev.redFlags);
-    atsHTML += listSection('Missing Keywords', ev.missingKeywords);
-    atsHTML += listSection('Suggested Improvements', ev.suggestedImprovements);
-    atsHTML += listSection('Field Specific Tips', ev.fieldSpecificTips);
-    atsHTML += listSection('Psychological Insights', ev.psychologicalInsights);
-    atsHTML += listSection('Formatting Tips', ev.formattingTips);
+    atsHTML += listSection('Top Fixes', ev.topFixes);
+    atsHTML += `<h4>Summary Advice</h4><p>${ev.summaryAdvice||'-'}</p>`;
+    atsHTML += listSection('Keyword Alignment', ev.keywordAlignment);
+    atsHTML += listSection('Formatting Notes', ev.formattingNotes);
+    atsHTML += listSection('Soft Issues', ev.softIssues);
+    atsHTML += `<h4>Recruiter Opinion</h4><p>${ev.recruiterOpinion||'-'}</p>`;
 
     const atsDiv = document.getElementById('atsView');
     atsDiv.innerHTML = `<div class="content-card">${atsHTML}</div>`;
@@ -697,7 +744,7 @@ try {
     let html = '';
     if (data.matchedSkills) {
       html += `<h4>Matched Skills (${data.matchedSkills.length})</h4><ul>${data.matchedSkills.map(s=>`<li>${s}</li>`).join('')}</ul>`;
-    }
+        }
     if (data.missingSkills) {
       html += `<h4>Missing Skills (${data.missingSkills.length})</h4><ul>${data.missingSkills.map(s=>`<li>${s}</li>`).join('')}</ul>`;
     }

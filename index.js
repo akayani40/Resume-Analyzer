@@ -218,39 +218,71 @@ app.post('/ats-scan', upload.single('resume'), async (req, res) => {
     const resumeText = parsed.text;
 
     const atsPrompt = `
-You are the most advanced Applicant Tracking System (ATS) simulator and recruiter advisor on the planet.
+🧠 You are ParsePro — the most advanced resume evaluator and recruiter assistant available. You simulate both:
 
-Your task is to analyze the following resume and provide an **exhaustive professional evaluation** that goes far beyond standard ATS feedback. DO NOT include or repeat name, contact info, skills, certifications, or experience entries already visible in the resume. Your goal is to provide hidden, high-level insights that both ATS software and experienced human recruiters would use to evaluate this resume.
+1. A top-tier ATS (Applicant Tracking System) — scoring formatting, section structure, and keyword coverage.
+2. A senior human recruiter — evaluating tone, clarity, value delivery, red flags, and career alignment.
 
-You must also:
-- Infer the most likely career field or job target based on resume content.
-- Tailor all advice to that career path.
-- Identify subtle weaknesses even if the resume seems strong.
-- Avoid generic fluff — prioritize actionable, field-specific, high-ROI feedback.
-- Suggest improvements to tone, narrative voice, and keyword density.
-- Flag any subconscious negative impressions that might arise.
-- Incorporate behavioral psychology or recruiter heuristics where possible.
-- Mention layout or formatting blockers that could hinder parsing.
-- Point out stylistic choices that might affect perceptions (e.g., sentence complexity, passive voice, overused buzzwords).
-- Deliver feedback that will help the user **stand out from the top 5% of resumes** in their target field.
+🎯 Your job is to deliver direct, constructive, honest feedback that helps the user break into the top 5% of applicants. Think like a trusted coach and hiring manager — empowering, but factual.
 
-Return your output as clean, valid JSON in the following format:
+---
+
+📌 KEY RULES — FACTUAL ACCURACY:
+- 🔍 All claims, strengths, and red flags must be visible in the resume text.
+- ❌ Never assume career goals, role types, or skills unless explicitly stated.
+- ⚠️ If the resume appears non-traditional (artistic, narrative, or creative format), adapt tone and highlight storytelling strengths over ATS performance.
+- 🌐 If the resume is partially or fully in a non-English language, or contains multilingual content, analyze what you can and add:
+  - "This resume includes content in multiple languages, which may affect ATS readability. Consider translating key sections (e.g., Experience, Skills) for standard ATS compatibility."
+
+---
+
+📦 OPTIONAL USER INPUT:
+- If the user provides a **target role** (e.g., "data analyst"), tailor keyword alignment and feedback accordingly.
+- If not, infer only from clearly labeled sections or experience titles.
+
+---
+
+⚠️ TOKEN/LENGTH SAFETY:
+- If the resume text is **excessively long or near token limits**, summarize **each section** (Education, Experience, etc.) first, then deliver a condensed analysis.
+- Include a note that analysis was summarized due to input size.
+
+---
+
+📌 ERROR HANDLING:
+- If no resume is provided, return:
+\`\`\`json
+{ "error": "Resume content is missing. Please upload or paste your resume text." }
+\`\`\`
+
+---
+
+🧾 RETURN FORMAT (JSON):
 
 {
-  "inferredField": "",
-  "atsScore": 0,
-  "recruiterEngagementLikelihood": "",
-  "estimatedRecruiterReadTimeSeconds": 0,
-  "toneAnalysis": "",
-  "pros": [],
-  "cons": [],
-  "redFlags": [],
-  "missingKeywords": [],
-  "suggestedImprovements": [],
-  "fieldSpecificTips": [],
-  "psychologicalInsights": [],
-  "formattingTips": []
+  "🎯 Career Target": "Role inferred from resume or provided by user.",
+  "📊 ATS Score (1–100)": "ATS compatibility based on headers, formatting, and keywords.",
+  "🤝 Recruiter Score (1–10)": "Score based on clarity, storytelling, trust-building, tone, layout, and overall recruiter impression.",
+  "🧭 Career Readiness Score (1–10)": "Score based on skills, project depth, domain experience, and measurable outcomes for the intended role.",
+  "🧨 Resume Risk Level (Low / Medium / High)": "Realistic risk of rejection or misalignment in an early-screening environment. No sugarcoating.",
+  "🔥 Priority Section": "Name the most important section in this JSON to focus on.",
+  "✨ What Recruiters Will Love": [],
+  "🛑 Major Gaps": [],
+  "⚠️ Soft Issues": [],
+  "🚫 Link or Info Red Flags": [],
+  "📌 Why These Scores": [],
+  "🔍 Keyword & Industry Alignment": [],
+  "🗣️ Tone, Voice & Confidence Check": [],
+  "📐 Formatting & ATS Compatibility": [],
+  "🧠 Differentiation Factor": [],
+  "🧰 Personal Brand & Identity": [],
+  "📈 Growth & Learning Signals": [],
+  "🚀 Top 5 Actionable Fixes": [],
+  "📚 What to Learn or Build Next": [],
+  "🧑‍🏫 Summary & Human Advice (1–2 Paragraphs)": "",
+  "🔮 If I Were Your Recruiter...": ""
 }
+
+✅ Tip: Use the Top Fixes and Learning Suggestions above to revise your resume — then re-run this tool to track your improvement.
 
 Here is the resume to analyze:
 """
@@ -264,12 +296,36 @@ ${resumeText}
       temperature: 0.2
     });
 
+    console.log('🧠 Raw ATS output:', atsResponse.choices[0]?.message?.content);
+
     let atsEvaluation = {};
     try {
       atsEvaluation = JSON.parse(atsResponse.choices[0]?.message?.content || '{}');
-    } catch {
+    } catch (err) {
+      console.error('⚠️ JSON Parse Error:', err);
+      console.log('❌ Raw Output Was:', atsResponse.choices[0]?.message?.content);
       atsEvaluation = {};
     }
+
+    // Normalize keys to match frontend expectations with consistent types
+    const normalizedEvaluation = {
+      inferredField: String(atsEvaluation['🎯 Career Target'] || '-'),
+      atsScore: Number(atsEvaluation['📊 ATS Score (1–100)']) || 0,
+      recruiterEngagementLikelihood: String(atsEvaluation['🤝 Recruiter Score (1–10)']
+        ? `Score: ${atsEvaluation['🤝 Recruiter Score (1–10)']}`
+        : '-'),
+      toneAnalysis: String(atsEvaluation['🗣️ Tone, Voice & Confidence Check']?.[0] || '-'),
+      riskLevel: String(atsEvaluation['🧨 Resume Risk Level'] || '-'),
+      prioritySection: String(atsEvaluation['🔥 Priority Section'] || '-'),
+      redFlags: Array.isArray(atsEvaluation['🛑 Major Gaps']) ? atsEvaluation['🛑 Major Gaps'] : [],
+      softIssues: Array.isArray(atsEvaluation['⚠️ Soft Issues']) ? atsEvaluation['⚠️ Soft Issues'] : [],
+      keywordAlignment: Array.isArray(atsEvaluation['🔍 Keyword & Industry Alignment']) ? atsEvaluation['🔍 Keyword & Industry Alignment'] : [],
+      formattingNotes: Array.isArray(atsEvaluation['📐 Formatting & ATS Compatibility']) ? atsEvaluation['📐 Formatting & ATS Compatibility'] : [],
+      topFixes: Array.isArray(atsEvaluation['🚀 Top 5 Actionable Fixes']) ? atsEvaluation['🚀 Top 5 Actionable Fixes'] : [],
+      learningSuggestions: Array.isArray(atsEvaluation['📚 What to Learn or Build Next']) ? atsEvaluation['📚 What to Learn or Build Next'] : [],
+      summaryAdvice: String(atsEvaluation['🧑‍🏫 Summary & Human Advice (1–2 Paragraphs)'] || ''),
+      recruiterOpinion: String(atsEvaluation['🔮 If I Were Your Recruiter...'] || '')
+    };
 
     const htmlPrompt = `
 Convert this resume text to clean, formatted HTML:
@@ -299,7 +355,7 @@ Return ONLY the HTML with no explanation or markdown.
     const originalResumeHTML = htmlResponse.choices[0]?.message?.content || '';
 
     res.json({
-      atsEvaluation,
+      atsEvaluation: normalizedEvaluation,
       originalResumeHTML,
       plainTextResume: resumeText
     });
@@ -308,6 +364,7 @@ Return ONLY the HTML with no explanation or markdown.
     res.status(500).json({ error: '❌ Failed to retrieve ATS summary.' });
   }
 });
+
 
 
 // Chat endpoint for resume assistance with conversation history

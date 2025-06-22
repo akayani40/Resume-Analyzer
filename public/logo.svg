@@ -4,7 +4,7 @@
   <defs>
     <style>
       .dark-circle { fill: #1a1a1a; }
-      .yellow-circle { fill: #FFCC00; }
+      .yellow-circle { fill: #69995D; }
       .white-text { fill: #ffffff; font-family: Helvetica, Arial, sans-serif; font-size: 42px; font-weight: 700; dominant-baseline: middle; text-anchor: middle; }
       .black-text { fill: #000000; font-family: Helvetica, Arial, sans-serif; font-size: 42px; font-weight: 700; dominant-baseline: middle; text-anchor: middle; }
     </style>
