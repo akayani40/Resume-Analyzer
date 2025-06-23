@@ -749,6 +749,13 @@ fileInput.addEventListener('change', async () => {
   const file = fileInput.files[0];
   if (!file) return;
 
+  // Close any open sections first
+  const pageContent = document.getElementById('pageContent');
+  if (pageContent) {
+    pageContent.style.display = 'none';
+    document.querySelectorAll('#pageContent .page').forEach(p => p.style.display = 'none');
+  }
+
   // Disable footer links during loading
   document.querySelector('.footer-content').classList.add('disabled');
 
@@ -759,6 +766,7 @@ fileInput.addEventListener('change', async () => {
   const progressText = document.getElementById('progressText');
   const progressMessage = document.getElementById('progressMessage');
   progressWrapper.style.display = 'block';
+  progressWrapper.style.zIndex = '1001'; // Ensure progress is above everything
   progressWrapper.classList.add('show', 'progress-transition');
 
   progressBar.style.width = '0%';
