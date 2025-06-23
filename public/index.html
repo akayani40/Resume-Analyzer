@@ -521,6 +521,13 @@
   </style>
 
   <script>
+    function listSection(title, arr) {
+      if (Array.isArray(arr) && arr.length) {
+        return `<h4>${title}</h4><ul>${arr.map(i => `<li>${i}</li>`).join('')}</ul>`;
+      }
+      return '';
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
       const toggle = document.getElementById('modeToggle');
       toggle.checked = localStorage.getItem('theme') === 'dark';
@@ -640,20 +647,27 @@ fileInput.addEventListener('change', async () => {
   if (!atsData.error && atsData.atsEvaluation) {
     const ev = atsData.atsEvaluation;
     let atsHTML = `<h3>📄 ATS Evaluation</h3>`;
-    atsHTML += `<p><strong>Inferred Field:</strong> ${ev.inferredField||'-'}</p>`;
-    atsHTML += `<p><strong>ATS Score:</strong> ${ev.atsScore||'-'}</p>`;
-    atsHTML += `<p><strong>Recruiter Engagement:</strong> ${ev.recruiterEngagementLikelihood||'-'}</p>`;
-    atsHTML += `<p><strong>Tone:</strong> ${ev.toneAnalysis||'-'}</p>`;
-    atsHTML += `<p><strong>Risk Level:</strong> ${ev.riskLevel||'-'}</p>`;
-
-    const listSection = (title, arr) => arr&&arr.length ? `<h4>${title}</h4><ul>${arr.map(i=>`<li>${i}</li>`).join('')}</ul>` : '';
-    atsHTML += listSection('Red Flags', ev.redFlags);
-    atsHTML += listSection('Top Fixes', ev.topFixes);
-    atsHTML += `<h4>Summary Advice</h4><p>${ev.summaryAdvice||'-'}</p>`;
-    atsHTML += listSection('Keyword Alignment', ev.keywordAlignment);
-    atsHTML += listSection('Formatting Notes', ev.formattingNotes);
-    atsHTML += listSection('Soft Issues', ev.softIssues);
-    atsHTML += `<h4>Recruiter Opinion</h4><p>${ev.recruiterOpinion||'-'}</p>`;
+    atsHTML += `<p><strong>🎯 Career Target:</strong> ${ev.inferredField || '-'}</p>`;
+    atsHTML += `<p><strong>📊 ATS Score:</strong> ${ev.atsScore || '-'}</p>`;
+    atsHTML += `<p><strong>🤝 Recruiter Score:</strong> ${ev.recruiterEngagementLikelihood || '-'}</p>`;
+    atsHTML += `<p><strong>🧭 Career Readiness Score:</strong> ${ev.careerReadinessScore || '-'}</p>`;
+    atsHTML += `<p><strong>🧨 Resume Risk Level:</strong> ${ev.riskLevel || '-'}</p>`;
+    atsHTML += `<p><strong>🔥 Priority Section:</strong> ${ev.prioritySection || '-'}</p>`;
+    atsHTML += listSection('✨ What Recruiters Will Love', ev.whatRecruitersWillLove);
+    atsHTML += listSection('🛑 Major Gaps', ev.redFlags);
+    atsHTML += listSection('⚠️ Soft Issues', ev.softIssues);
+    atsHTML += listSection('🚫 Link or Info Red Flags', ev.linkRedFlags);
+    atsHTML += listSection('📌 Why These Scores', ev.whyTheseScores);
+    atsHTML += listSection('🔍 Keyword & Industry Alignment', ev.keywordAlignment);
+    atsHTML += listSection('🗣️ Tone, Voice & Confidence Check', ev.toneAnalysis ? [ev.toneAnalysis] : []);
+    atsHTML += listSection('📐 Formatting & ATS Compatibility', ev.formattingNotes);
+    atsHTML += listSection('🧠 Differentiation Factor', ev.differentiationFactor);
+    atsHTML += listSection('🧰 Personal Brand & Identity', ev.personalBrand);
+    atsHTML += listSection('📈 Growth & Learning Signals', ev.growthSignals);
+    atsHTML += listSection('🚀 Top 5 Actionable Fixes', ev.topFixes);
+    atsHTML += listSection('📚 What to Learn or Build Next', ev.learningSuggestions);
+    atsHTML += `<h4>🧑‍🏫 Summary & Human Advice</h4><p>${ev.summaryAdvice || '-'}</p>`;
+    atsHTML += `<h4>🔮 If I Were Your Recruiter...</h4><p>${ev.recruiterOpinion || '-'}</p>`;
 
     const atsDiv = document.getElementById('atsView');
     atsDiv.innerHTML = `<div class="content-card">${atsHTML}</div>`;
@@ -971,125 +985,15 @@ document.addEventListener('DOMContentLoaded', () => {
     let formattedContent = content
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
       .replace(/\*(.*?)\*/g, '<em>$1</em>') // Italic
-      .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>') // Code blocks
-      .replace(/`(.*?)`/g, '<code>$1</code>') // Inline code
-      .replace(/\n/g, '<br>'); // Line breaks
+      .replace(/```([\s\S]*?)```/g, '<pre>$1</pre>'); // Code block
     
     messageContent.innerHTML = formattedContent;
     
     messageDiv.appendChild(messageContent);
     chatMessages.appendChild(messageDiv);
-    
-    // Scroll to bottom of chat
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 });
-
-// The file upload handler is already defined above
-
-function showPage(pageId) {
-  // If still loading, ignore clicks
-  const progressWrapper = document.getElementById('progressWrapper');
-  if (progressWrapper && progressWrapper.style.display !== 'none') {
-    return;
-  }
-  // Hide all pages
-  document.querySelectorAll('.page').forEach(page => {
-    page.style.display = 'none';
-  });
-  // Show selected page
-  const selectedPage = document.getElementById(pageId);
-  if (selectedPage) {
-    selectedPage.style.display = 'block';
-    document.getElementById('pageContent').style.display = 'block';
-  }
-}
-
-// Close page when clicking outside
-document.addEventListener('click', (e) => {
-  // Ignore clicks on footer links (they have their own handler)
-  if (e.target.classList.contains('footer-link')) return;
-
-  // Ignore clicks on the light/dark mode toggle switch
-  if (e.target.closest('.switch')) return;
-
-  // If the click happened outside the page-content area, hide the open page section
-  if (!e.target.closest('.page-content')) {
-    document.getElementById('pageContent').style.display = 'none';
-  }
-});
-
-function animateHeaderText(headerId, text) {
-  const header = document.getElementById(headerId);
-  header.innerHTML = '';
-  text.split('').forEach((char, i) => {
-    const span = document.createElement('span');
-    span.textContent = char === ' ' ? '\u00A0' : char;
-    span.style.animationDelay = (i * 0.045) + 's';
-    header.appendChild(span);
-  });
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-  animateHeaderText('about-header', 'About ParsePro');
-  animateHeaderText('how-header', 'How It Works');
-  animateHeaderText('contact-header', 'Contact Us');
-});
-
-// Footer show/hide based on proximity to bottom of page
-const footer = document.querySelector('.footer');
-const handleFooterVisibility = () => {
-  const scrollY = window.pageYOffset;
-  const winH   = window.innerHeight;
-  const docH   = document.documentElement.scrollHeight;
-  // Show footer only when user is within 120px of bottom
-  if (scrollY + winH >= docH - 120) {
-    footer.classList.remove('hidden');
-  } else {
-    footer.classList.add('hidden');
-  }
-};
-
-// Initial check and attach listener
-handleFooterVisibility();
-window.addEventListener('scroll', handleFooterVisibility);
-
-// AJAX submit contact form to Formspree (no page reload)
-const contactForm = document.getElementById('contactForm');
-if (contactForm) {
-  contactForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const formData = new FormData(contactForm);
-    const action = contactForm.getAttribute('action');
-    try {
-      await fetch(action, {
-        method: 'POST',
-        body: formData,
-        headers: { 'Accept': 'application/json' }
-      });
-      contactForm.classList.add('sent');
-      const msg = document.createElement('p');
-      msg.className = 'success-msg';
-      msg.textContent = '✅ Message sent! Thank you.';
-      contactForm.parentElement.appendChild(msg);
-      let cooldown = 10;
-      const btn = contactForm.querySelector('button[type="submit"]');
-      if (btn) btn.disabled = true;
-      const interval = setInterval(()=>{
-        cooldown--;
-        msg.textContent = `✅ Message sent! You can send another in ${cooldown}s`;
-        if(cooldown<=0){
-          clearInterval(interval);
-          msg.remove();
-          contactForm.reset();
-          contactForm.classList.remove('sent');
-          if(btn) btn.disabled = false;
-        }
-      },1000);
-    } catch(err) {
-      alert('Failed to send message. Please try again later.');
-    }
-  });
-}
-
-</script>
+  </script>
+</body>
+</html>

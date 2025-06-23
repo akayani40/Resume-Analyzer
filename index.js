@@ -5,6 +5,16 @@ const { OpenAI } = require('openai');
 const cors = require('cors');
 require('dotenv').config();
 
+// Helper function to validate JSON
+function isValidJson(str) {
+  try {
+    JSON.parse(str);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 const app = express();
 const upload = multer();
 const PORT = 3000;
@@ -17,7 +27,7 @@ const OPENAI_KEY = process.env.OPENAI_KEY;
 // Use a fake API key in mock mode to prevent accidental API calls
 const openai = new OpenAI({ apiKey: MOCK_MODE ? 'mock-key-to-prevent-charges' : OPENAI_KEY });
 
-const ADV_MODEL = process.env.ADV_MODEL || 'gpt-3.5-turbo';
+const ADV_MODEL = process.env.ADV_MODEL || 'gpt-4o';
 
 // Debug: Print mode at startup
 console.log('🔧 APPLICATION MODE:', MOCK_MODE ? 'MOCK' : 'LIVE');
@@ -78,10 +88,35 @@ For non-technical resumes:
     const parsed = await pdfParse(file.buffer);
     const resumeText = parsed.text;
 
+    let resumeForAnalysis = resumeText;
+
+    // Summarize if resume is long
+    if (resumeText.length > 2000) {
+      const summaryPrompt = `
+Summarize the following resume section by section (Education, Experience, Skills, etc.).
+Keep all key details, but make it as concise as possible for an AI to analyze.
+
+Resume:
+"""
+${resumeText}
+"""
+Return ONLY the summary, no extra comments.
+      `.trim();
+
+      const summaryResponse = await openai.chat.completions.create({
+        model: ADV_MODEL,
+        messages: [{ role: 'user', content: summaryPrompt }],
+        temperature: 0.2,
+        max_tokens: 1024 // You can adjust this if needed
+      });
+
+      resumeForAnalysis = summaryResponse.choices[0]?.message?.content || resumeText;
+    }
+
     const skillsPrompt = `
 Extract and categorize skills from this resume text:
 
-${resumeText}
+${resumeForAnalysis}
 
 Return a JSON object with these categories:
 - Languages (programming languages)
@@ -97,14 +132,19 @@ Return ONLY valid JSON without any explanation or markdown.
     `.trim();
 
     const gptSkills = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
+      model: 'gpt-4o',
       messages: [{ role: 'user', content: skillsPrompt }],
       temperature: 0.3
     });
 
     let categorizedSkills = {};
+    let rawSkillsText = gptSkills.choices[0]?.message?.content || '{}';
+    
+    // Remove markdown block if it exists
+    rawSkillsText = rawSkillsText.replace(/```json|```/g, '').trim();
+    
     try {
-      categorizedSkills = JSON.parse(gptSkills.choices[0]?.message?.content || '{}');
+      categorizedSkills = JSON.parse(rawSkillsText);
     } catch (err) {
       console.error('Error parsing skills JSON:', err);
       categorizedSkills = {
@@ -117,6 +157,7 @@ Return ONLY valid JSON without any explanation or markdown.
         Other: []
       };
     }
+    
 
     const skillStrength = {};
     Object.keys(categorizedSkills).forEach(category => {
@@ -128,7 +169,7 @@ Return ONLY valid JSON without any explanation or markdown.
 You're a professional resume reviewer helping applicants from ALL industries.
 A user has uploaded the following resume text:
 
-${resumeText}
+${resumeForAnalysis}
 
 Give 3–4 specific and encouraging suggestions for what they should improve.
 Include comments about how their skills are presented, any missing skills you notice, and general resume improvements.
@@ -147,7 +188,7 @@ Output plain text only.
 
     const projectPrompt = `
 """
-${resumeText}
+${resumeForAnalysis}
 """
 Suggest 2 resume-worthy projects they can build to strengthen their profile in their field.
 Be practical and impactful.
@@ -217,6 +258,31 @@ app.post('/ats-scan', upload.single('resume'), async (req, res) => {
     const parsed = await pdfParse(file.buffer);
     const resumeText = parsed.text;
 
+    let resumeForAnalysis = resumeText;
+
+    // Summarize if resume is long
+    if (resumeText.length > 2000) {
+      const summaryPrompt = `
+Summarize the following resume section by section (Education, Experience, Skills, etc.).
+Keep all key details, but make it as concise as possible for an AI to analyze.
+
+Resume:
+"""
+${resumeText}
+"""
+Return ONLY the summary, no extra comments.
+      `.trim();
+
+      const summaryResponse = await openai.chat.completions.create({
+        model: ADV_MODEL,
+        messages: [{ role: 'user', content: summaryPrompt }],
+        temperature: 0.2,
+        max_tokens: 1024 // You can adjust this if needed
+      });
+
+      resumeForAnalysis = summaryResponse.choices[0]?.message?.content || resumeText;
+    }
+
     const atsPrompt = `
 🧠 You are ParsePro — the most advanced resume evaluator and recruiter assistant available. You simulate both:
 
@@ -258,6 +324,8 @@ app.post('/ats-scan', upload.single('resume'), async (req, res) => {
 
 🧾 RETURN FORMAT (JSON):
 
+Return a JSON object with ALL of the following keys, 
+
 {
   "🎯 Career Target": "Role inferred from resume or provided by user.",
   "📊 ATS Score (1–100)": "ATS compatibility based on headers, formatting, and keywords.",
@@ -286,25 +354,45 @@ app.post('/ats-scan', upload.single('resume'), async (req, res) => {
 
 Here is the resume to analyze:
 """
-${resumeText}
+${resumeForAnalysis}
 """
     `.trim();
 
     const atsResponse = await openai.chat.completions.create({
       model: ADV_MODEL,
       messages: [{ role: 'user', content: atsPrompt }],
-      temperature: 0.2
+      temperature: 0.2,
+      max_tokens: 2048 // or higher if your model supports it
     });
 
     console.log('🧠 Raw ATS output:', atsResponse.choices[0]?.message?.content);
 
     let atsEvaluation = {};
-    try {
-      atsEvaluation = JSON.parse(atsResponse.choices[0]?.message?.content || '{}');
-    } catch (err) {
-      console.error('⚠️ JSON Parse Error:', err);
-      console.log('❌ Raw Output Was:', atsResponse.choices[0]?.message?.content);
-      atsEvaluation = {};
+    const rawATS = atsResponse.choices[0]?.message?.content || '';
+    
+    // Remove markdown block if it exists
+    const cleanATS = rawATS.replace(/```json|```/g, '').trim();
+    
+    if (isValidJson(cleanATS)) {
+      atsEvaluation = JSON.parse(cleanATS);
+    } else {
+      console.error('❌ OpenAI returned non-JSON:', rawATS);
+      throw new Error('OpenAI response was not valid JSON. Check token limits or prompt format.');
+    }
+
+    const requiredKeys = [
+      "🎯 Career Target", "📊 ATS Score (1–100)", "🤝 Recruiter Score (1–10)", "🧭 Career Readiness Score (1–10)",
+      "🧨 Resume Risk Level (Low / Medium / High)", "🔥 Priority Section", "✨ What Recruiters Will Love", "🛑 Major Gaps",
+      "⚠️ Soft Issues", "🚫 Link or Info Red Flags", "📌 Why These Scores", "🔍 Keyword & Industry Alignment",
+      "🗣️ Tone, Voice & Confidence Check", "📐 Formatting & ATS Compatibility", "🧠 Differentiation Factor",
+      "🧰 Personal Brand & Identity", "📈 Growth & Learning Signals", "🚀 Top 5 Actionable Fixes",
+      "📚 What to Learn or Build Next", "🧑‍🏫 Summary & Human Advice (1–2 Paragraphs)", "🔮 If I Were Your Recruiter..."
+    ];
+
+    for (const key of requiredKeys) {
+      if (!(key in atsEvaluation)) {
+        atsEvaluation[key] = Array.isArray(atsEvaluation[key]) ? [] : "";
+      }
     }
 
     // Normalize keys to match frontend expectations with consistent types
@@ -324,7 +412,14 @@ ${resumeText}
       topFixes: Array.isArray(atsEvaluation['🚀 Top 5 Actionable Fixes']) ? atsEvaluation['🚀 Top 5 Actionable Fixes'] : [],
       learningSuggestions: Array.isArray(atsEvaluation['📚 What to Learn or Build Next']) ? atsEvaluation['📚 What to Learn or Build Next'] : [],
       summaryAdvice: String(atsEvaluation['🧑‍🏫 Summary & Human Advice (1–2 Paragraphs)'] || ''),
-      recruiterOpinion: String(atsEvaluation['🔮 If I Were Your Recruiter...'] || '')
+      recruiterOpinion: String(atsEvaluation['🔮 If I Were Your Recruiter...'] || ''),
+      whatRecruitersWillLove: Array.isArray(atsEvaluation['✨ What Recruiters Will Love']) ? atsEvaluation['✨ What Recruiters Will Love'] : [],
+      differentiationFactor: Array.isArray(atsEvaluation['🧠 Differentiation Factor']) ? atsEvaluation['🧠 Differentiation Factor'] : [],
+      personalBrand: Array.isArray(atsEvaluation['🧰 Personal Brand & Identity']) ? atsEvaluation['🧰 Personal Brand & Identity'] : [],
+      growthSignals: Array.isArray(atsEvaluation['📈 Growth & Learning Signals']) ? atsEvaluation['📈 Growth & Learning Signals'] : [],
+      whyTheseScores: Array.isArray(atsEvaluation['📌 Why These Scores']) ? atsEvaluation['📌 Why These Scores'] : [],
+      linkRedFlags: Array.isArray(atsEvaluation['🚫 Link or Info Red Flags']) ? atsEvaluation['🚫 Link or Info Red Flags'] : [],
+      careerReadinessScore: String(atsEvaluation['🧭 Career Readiness Score (1–10)'] || '-')
     };
 
     const htmlPrompt = `
@@ -437,7 +532,7 @@ app.post('/chat', express.json(), async (req, res) => {
     }
 
     const chatResponse = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
+      model: 'gpt-4o',
       messages: messages,
       temperature: 0.7
     });
@@ -492,7 +587,7 @@ ${jobDescription}
 Return JSON with keys matchedSkills, missingSkills, overallMatch.`;
 
     const resp = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
+      model: 'gpt-4o',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.3
     });
