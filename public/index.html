@@ -11,6 +11,18 @@
     const savedTheme = localStorage.getItem('theme') || 'light';
     document.documentElement.setAttribute('data-theme', savedTheme);
   </script>
+  <style>
+    /* card background respects theme */
+    :root {
+      --card-bg-light: #ffffff;
+      --card-bg-dark:  #1c1c1c;
+    }
+    [data-theme="light"] .content-card { background: var(--card-bg-light); color: #111; }
+    [data-theme="dark"]  .content-card { background: var(--card-bg-dark);  color: #f1f1f1; }
+
+    /* remove inner feature-panel boxes */
+    .feature { background: transparent; border: none; }
+  </style>
 </head>
 <body>
   <!-- Theme Toggle -->
@@ -118,11 +130,11 @@
 
   <footer class="footer">
     <div class="footer-content">
-      <a href="#about" class="footer-link" onclick="showPage('about')">About ParsePro</a>
+      <a href="#about" class="footer-link" onclick="showPage('about'); return false;">About ParsePro</a>
       <span class="footer-divider">|</span>
-      <a href="#how-it-works" class="footer-link" onclick="showPage('how-it-works')">How It Works</a>
+      <a href="#how-it-works" class="footer-link" onclick="showPage('how-it-works'); return false;">How It Works</a>
       <span class="footer-divider">|</span>
-      <a href="#contact" class="footer-link" onclick="showPage('contact')">Contact</a>
+      <a href="#contact" class="footer-link" onclick="showPage('contact'); return false;">Contact</a>
       <span class="footer-divider">|</span>
       <a href="https://github.com/akayani40/Resume-Analyzer" class="footer-link" target="_blank">GitHub</a>
     </div>
@@ -130,7 +142,7 @@
 
   <!-- Page Content -->
   <div id="pageContent" class="page-content" style="display: none;">
-    <div id="about" class="page">
+    <div id="about" class="page" style="display: none;">
       <h2 class="animated-header" id="about-header"></h2>
       <div class="content-card">
         <p>ParsePro is an AI-powered resume analyzer that helps job seekers optimize their resumes for both human recruiters and ATS systems. Our mission is to bridge the gap between traditional resume writing and modern recruitment technology.</p>
@@ -154,7 +166,7 @@
       </div>
     </div>
 
-    <div id="how-it-works" class="page">
+    <div id="how-it-works" class="page" style="display: none;">
       <h2 class="animated-header" id="how-header"></h2>
       <div class="content-card">
         <div class="step-container">
@@ -182,7 +194,7 @@
       </div>
     </div>
 
-    <div id="contact" class="page">
+    <div id="contact" class="page" style="display: none;">
       <h2 class="animated-header" id="contact-header"></h2>
       <div class="content-card">
         <div class="contact-grid">
@@ -200,7 +212,7 @@
               </div>
             </div>
           </div>
-          <form class="contact-form" id="contactForm" action="https://formspree.io/f/xblyagvn" method="POST">
+          <form class="contact-form" id="contactForm" action="https://formspree.io/f/xblyagvn" method="POST" onsubmit="return false;">
             <input type="text" name="name" placeholder="Your Name" required>
             <input type="email" name="email" placeholder="Your Email" required>
             <textarea name="message" placeholder="Your Message" required></textarea>
@@ -225,7 +237,7 @@
     }
 
     .content-card {
-      background: var(--card-bg);
+      background: var(--bg);
       border-radius: 12px;
       padding: 30px;
       margin-top: 20px;
@@ -243,15 +255,13 @@
     .feature {
       text-align: center;
       padding: 20px;
-      background: var(--bg);
-      border-radius: 8px;
+      background: transparent;      /* remove black box */
+      border: none;
       transition: transform 0.3s ease;
-      border: 1px solid var(--border);
     }
 
     .feature:hover {
       transform: translateY(-5px);
-      background: var(--hover-bg);
     }
 
     .feature h3 {
@@ -518,6 +528,40 @@
     .logo-circle:hover {
       transform: translateY(-8px) scale(1.05);
     }
+
+    /* Slide-up panel, anchored above the footer */
+    #pageContent {
+      display: none;           /* revealed when footer link clicked */
+      padding-top: 40px;       /* spacing below the upload area */
+    }
+
+    /* smooth slide-up */
+    @keyframes slideUp {
+      from { transform: translateY(100%); opacity: 0; }
+      to   { transform: translateY(0);   opacity: 1; }
+    }
+
+    /* make inner "page" cards blend with theme */
+    #pageContent .content-card {
+      background: var(--card-bg-light);
+      color: #111;
+    }
+    [data-theme="dark"] #pageContent .content-card {
+      background: var(--card-bg-dark);
+      color: #f1f1f1;
+    }
+
+    .footer {
+      position: fixed;          /* always pinned */
+      left: 0;
+      right: 0;
+      bottom: 0;                /* flush with bottom edge */
+      width: 100%;
+      z-index: 1000;
+      background: var(--bg);    /* blends with theme */
+      transition: transform .35s ease;
+      transform: translateY(0); /* visible by default */
+    }
   </style>
 
   <script>
@@ -528,6 +572,142 @@
       return '';
     }
 
+    // ---- Modal Page Logic (About / How It Works / Contact) ----
+    function animateHeader(el, text) {
+      if (!el) return;
+      el.innerHTML = '';                       // Clear existing spans
+      text.split('').forEach((char, idx) => {  // Split into chars
+        const span = document.createElement('span');
+        span.textContent = char;
+        span.style.animationDelay = (idx * 0.04) + 's';
+        el.appendChild(span);
+      });
+    }
+
+    // Header texts for each section
+    const HEADER_TEXTS = {
+      'about': 'About ParsePro',
+      'how-it-works': 'How It Works',
+      'contact': 'Contact'
+    };
+
+    function showPage(pageId) {
+      // Hide all sub-pages
+      document.querySelectorAll('#pageContent .page')
+              .forEach(p => p.style.display = 'none');
+
+      // Show container & selected page
+      const container = document.getElementById('pageContent');
+      container.style.display = 'block';
+      const page = document.getElementById(pageId);
+      if (page) {
+        page.style.display = 'block';
+        // Animate header
+        const headerEl = page.querySelector('.animated-header');
+        animateHeader(headerEl, HEADER_TEXTS[pageId] || '');
+        // Smoothly scroll the page so the selected section appears just below the upload area
+        page.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      // Always show footer when a page is open
+      if (footerEl) footerEl.style.transform = 'translateY(0)';
+      allowHide = false; // Reset scroll detection
+
+      if (pageId === 'contact') {
+  const contactForm = document.getElementById('contactForm');
+  if (contactForm && !contactForm.hasAttribute('data-handler-attached')) {
+    contactForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const formData = new FormData(contactForm);
+      const submitButton = contactForm.querySelector('button[type="submit"]');
+      submitButton.disabled = true;
+      submitButton.textContent = 'Sending...';
+      try {
+        const response = await fetch(contactForm.action, {
+          method: 'POST',
+          body: formData,
+          headers: { 'Accept': 'application/json' }
+        });
+        if (response.ok) {
+          submitButton.textContent = 'Sent!';
+          contactForm.reset();
+        } else {
+          submitButton.textContent = 'Error, try again';
+        }
+      } catch (err) {
+        console.error('Contact form submission failed', err);
+        submitButton.textContent = 'Error, try again';
+      } finally {
+        setTimeout(() => {
+          submitButton.disabled = false;
+          submitButton.textContent = 'Send Message';
+        }, 5000);
+      }
+    });
+
+    // Mark it so we don’t attach twice
+    contactForm.setAttribute('data-handler-attached', 'true');
+  }
+}
+
+
+
+
+    }
+
+    // No outside-click logic needed for inline section display
+
+    // ---- Footer Hide / Show (better) ----
+    const footerEl = document.querySelector('.footer');
+    let lastY = window.scrollY;
+    let allowHide = false;
+
+    window.addEventListener('scroll', () => {
+      const pageContent = document.getElementById('pageContent');
+      const isSectionOpen = pageContent && pageContent.style.display === 'block';
+      if (isSectionOpen) {
+        footerEl.style.transform = 'translateY(0)';
+        return;
+      }
+      if (!allowHide && Math.abs(window.scrollY - lastY) > 60) {
+        allowHide = true;
+      }
+      if (!allowHide) return;
+      const y = window.scrollY;
+      if (y < lastY)  footerEl.style.transform = 'translateY(100%)'; // ↑ up ⇒ hide
+      else            footerEl.style.transform = 'translateY(0)';    // ↓ down ⇒ show
+      lastY = y;
+    }, { passive: true });
+
+    // Enable footer hide when a footer link is clicked (showPage called)
+    const originalShowPage = showPage;
+    showPage = function(id) {
+      originalShowPage(id);
+      // Always show footer when a page is open
+      if (footerEl) footerEl.style.transform = 'translateY(0)';
+      // Prevent footer from hiding while a section is open
+      allowHide = false;
+    };
+
+    // Close sections when clicking upper half & reset footer
+    // Also re-enable footer hide after closing section
+    document.addEventListener('mousedown', (e) => {
+  const container = document.getElementById('pageContent');
+  const isInsideContentCard = e.target.closest('.content-card');
+
+  if (
+    container.style.display === 'block' &&
+    e.clientY < window.innerHeight / 2 &&
+    !e.target.classList.contains('footer-link') &&
+    !isInsideContentCard // ✅ New: only hide if outside card
+  ) {
+    container.style.display = 'none';
+    document.querySelectorAll('#pageContent .page').forEach(p => p.style.display = 'none');
+    allowHide = true;
+    if (footerEl) footerEl.style.transform = 'translateY(0)';
+  }
+});
+
+
     document.addEventListener('DOMContentLoaded', () => {
       const toggle = document.getElementById('modeToggle');
       toggle.checked = localStorage.getItem('theme') === 'dark';
@@ -535,7 +715,10 @@
         const theme = toggle.checked ? 'dark' : 'light';
         document.documentElement.setAttribute('data-theme', theme);
         localStorage.setItem('theme', theme);
+        // Ensure no refresh or hiding of sections
       });
+
+      toggle.addEventListener('click', e => e.stopPropagation());
 
       const dropZone = document.getElementById('drop-zone');
       const fileInput = document.getElementById('resumeInput');
@@ -908,14 +1091,34 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   
   // Function to send message to the chat API
-  async function sendMessage() {
+  async function sendMessage(event) {
+    event.preventDefault(); // Prevent default form submission behavior
+
     const message = chatInput.value.trim();
     if (!message) return;
-    
+
     // Add user message to chat
     addMessageToChat(message, 'user');
     chatInput.value = '';
-    
+
+    // Disable the send button and start cooldown
+    sendButton.disabled = true;
+    let cooldownTime = 10; // 10 seconds cooldown
+    const cooldownMessage = document.createElement('div');
+    cooldownMessage.className = 'cooldown-message';
+    cooldownMessage.innerText = `Please wait ${cooldownTime} seconds before sending another message.`;
+    sendButton.parentNode.appendChild(cooldownMessage);
+
+    const cooldownInterval = setInterval(() => {
+      cooldownTime--;
+      cooldownMessage.innerText = `Please wait ${cooldownTime} seconds before sending another message.`;
+      if (cooldownTime <= 0) {
+        clearInterval(cooldownInterval);
+        sendButton.disabled = false;
+        cooldownMessage.remove();
+      }
+    }, 1000);
+
     // Show typing indicator
     const typingIndicator = document.createElement('div');
     typingIndicator.className = 'message ai-message typing-indicator';
@@ -970,30 +1173,64 @@ document.addEventListener('DOMContentLoaded', () => {
       
       console.error('Chat error:', error);
       addMessageToChat('Sorry, there was an error connecting to the server.', 'ai');
+    } finally {
+      typingIndicator.remove();
     }
   }
   
   // Function to add a message to the chat
-  function addMessageToChat(content, sender) {
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${sender}-message`;
-    
-    const messageContent = document.createElement('div');
-    messageContent.className = 'message-content';
-    
-    // Process markdown-like formatting
-    let formattedContent = content
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
-      .replace(/\*(.*?)\*/g, '<em>$1</em>') // Italic
-      .replace(/```([\s\S]*?)```/g, '<pre>$1</pre>'); // Code block
-    
-    messageContent.innerHTML = formattedContent;
-    
-    messageDiv.appendChild(messageContent);
-    chatMessages.appendChild(messageDiv);
+  function addMessageToChat(message, sender) {
+    const messageElement = document.createElement('div');
+    messageElement.className = `message ${sender}-message`;
+    messageElement.innerHTML = `<div class="message-content">${message}</div>`;
+
+    // Prevent default behavior for any links or clickable elements
+    messageElement.querySelectorAll('a, .clickable').forEach(element => {
+      element.addEventListener('click', (event) => {
+        event.preventDefault(); // Prevent default link behavior
+        // Add any additional logic for handling the click, if needed
+      });
+    });
+
+    chatMessages.appendChild(messageElement);
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 });
+
+// Intercept Contact Form submission to avoid page refresh
+const contactForm = document.getElementById('contactForm');
+if (contactForm) {
+  contactForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(contactForm);
+    const submitButton = contactForm.querySelector('button[type="submit"]');
+    submitButton.disabled = true;
+    submitButton.textContent = 'Sending...';
+    try {
+      const response = await fetch(contactForm.action, {
+        method: 'POST',
+        body: formData,
+        headers: { 'Accept': 'application/json' }
+      });
+      if (response.ok) {
+        submitButton.textContent = 'Sent!';
+        // Optionally clear the form fields
+        contactForm.reset();
+      } else {
+        submitButton.textContent = 'Error, try again';
+        console.error('Contact form error', await response.text());
+      }
+    } catch (err) {
+      submitButton.textContent = 'Error, try again';
+      console.error('Contact form submission failed', err);
+    } finally {
+      setTimeout(() => {
+        submitButton.disabled = false;
+        submitButton.textContent = 'Send Message';
+      }, 5000); // Re-enable after 5s
+    }
+  });
+}
   </script>
 </body>
 </html>
