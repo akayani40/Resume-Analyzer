@@ -1008,19 +1008,30 @@ function saveCurrentView(viewId) {
 // Load the current view from local storage
 function loadCurrentView() {
   const viewId = localStorage.getItem('currentView');
-  if (viewId && viewId !== 'uploadUI') {
+  const controls = document.getElementById('controls');
+  // Hide controls unless we have saved ATS data
+  if (!localStorage.getItem('atsData') && controls) {
+    controls.style.display = 'none';
+  }
+  if (viewId && viewId !== 'uploadUI' && localStorage.getItem('atsData')) {
     toggleView(viewId);
   } else {
-    toggleView('uploadUI'); // Default to upload view if none saved or if it's the first load
+    toggleView('uploadUI');
   }
 }
 
-// Modify toggleView to save the current view only after upload
+// Modify toggleView so that controls are shown only when leaving uploadUI
 function toggleView(viewId) {
   ['atsView', 'jobMatchView', 'chatView', 'uploadUI'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = (id === viewId) ? 'block' : 'none';
   });
+  const controls = document.getElementById('controls');
+  if (viewId === 'uploadUI') {
+    if (controls) controls.style.display = 'none';
+  } else if (uploadedFile && controls) {
+    controls.style.display = 'flex';
+  }
   if (viewId !== 'uploadUI' && uploadedFile) {
     saveCurrentView(viewId);
   }
