@@ -111,6 +111,7 @@
       <button onclick="toggleView('atsView')">📄 ATS View</button>
       <button onclick="toggleView('jobMatchView')">🧩 Job Match</button>
       <button onclick="toggleView('chatView')">💬 Chat & Edit</button>
+      <button id="newUploadBtn">🔄 New Upload</button>
     </div>
 
 <div class="upload-center" id="uploadUI">
@@ -132,7 +133,43 @@
       <p class="wait-message">Please wait up to 2 minutes for everything to load. Doing our best to provide the best results.</p>
     </div>
 
-    <div id="atsView" style="display: none;"></div>
+    <div id="atsView" style="display: none;">
+      <div class="job-match-wrapper">
+        <div class="job-match-grid">
+          <div class="match-card">
+            <h3>📊 Scores</h3>
+            <p><strong>Target Field:</strong> ${ev.inferredField || '—'}</p>
+            <p><strong>ATS Score:</strong> ${ev.atsScore ?? '—'}%</p>
+            <p><strong>Recruiter Score:</strong> ${ev.recruiterEngagementLikelihood || '—'}</p>
+            <p><strong>Career-Readiness:</strong> ${ev.careerReadinessScore || '—'}</p>
+            <p><strong>Tone Analysis:</strong> ${ev.toneAnalysis || '—'}</p>
+            <p><strong>Risk Level:</strong> ${ev.riskLevel || '—'}</p>
+            <p><strong>Priority Section:</strong> ${ev.prioritySection || '—'}</p>
+          </div>
+
+          <div class="match-card">
+            <h3>✨ What Recruiters Will Love</h3>
+            ${listMarkup(ev.whatRecruitersWillLove)}
+
+            <h3 style="margin-top: 24px;">🛑 Major Gaps / Red Flags</h3>
+            ${listMarkup(ev.redFlags)}
+          </div>
+
+          <div class="match-card">
+            <h3>⚠️ Soft Issues</h3>
+            ${listMarkup(ev.softIssues)}
+
+            <h3 style="margin-top: 24px;">🚫 Link / Info Red Flags</h3>
+            ${listMarkup(ev.linkRedFlags)}
+          </div>
+        </div>
+
+        <div class="match-card suggestion-box" style="margin-top: 40px;">
+          <h3>💡 AI Suggestions</h3>
+          ${listMarkup(ev.topFixes)}
+        </div>
+      </div>
+    </div>
     <div id="jobMatchView" style="display: none;">
       <div class="content-card">
         <h3>🧩 Compare to Job Description</h3>
@@ -963,12 +1000,30 @@ dropZone.addEventListener('drop', (e) => {
   });
 });
 
-// ①  Add helper just after the "global state" block
+// Save the current view to local storage
+function saveCurrentView(viewId) {
+  try { localStorage.setItem('currentView', viewId); } catch{}
+}
+
+// Load the current view from local storage
+function loadCurrentView() {
+  const viewId = localStorage.getItem('currentView');
+  if (viewId && viewId !== 'uploadUI') {
+    toggleView(viewId);
+  } else {
+    toggleView('uploadUI'); // Default to upload view if none saved or if it's the first load
+  }
+}
+
+// Modify toggleView to save the current view only after upload
 function toggleView(viewId) {
-  ['atsView', 'jobMatchView', 'chatView'].forEach(id => {
+  ['atsView', 'jobMatchView', 'chatView', 'uploadUI'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = (id === viewId) ? 'block' : 'none';
   });
+  if (viewId !== 'uploadUI' && uploadedFile) {
+    saveCurrentView(viewId);
+  }
 }
 
 // === NEW helper to show the static pages =================================================
@@ -1061,7 +1116,7 @@ function clearSavedAnalysis() {
   localStorage.removeItem('atsData');
   localStorage.removeItem('jobMatchData');
 }
-function loadSavedAnalysis() {
+function loadAtsData() {
   const raw = localStorage.getItem('atsData');
   if (!raw) return;              // nothing stored
   try {
@@ -1071,12 +1126,79 @@ function loadSavedAnalysis() {
       clearSavedAnalysis();      // stale or placeholder → start fresh
       return;
     }
-    // … existing code that rebuilds the UI …
+    // Render ATS view with saved data
+    const atsView = document.getElementById('atsView');
+    atsView.innerHTML = renderAtsEvaluation(payload.data.atsEvaluation);
+
+    // Restore UI state: hide upload, show controls
+    const uploadUI = document.getElementById('uploadUI');
+    if (uploadUI) uploadUI.style.display = 'none';
+    const progressWrapper = document.getElementById('progressWrapper');
+    if (progressWrapper) progressWrapper.style.display = 'none';
+    const controls = document.getElementById('controls');
+    if (controls) {
+      controls.style.display = 'flex';
+      controls.classList.add('tabs-transition', 'show');
+    }
+    document.querySelector('.footer-content')?.classList.remove('disabled');
+
+    toggleView('atsView');
+
+    // Restore resume editor content
+    if (payload.data.originalResumeHTML) {
+      const editor = document.getElementById('resumeEditor');
+      if (editor) editor.innerHTML = payload.data.originalResumeHTML;
+    }
   } catch { clearSavedAnalysis(); }
 }
 
-// Inside DOMContentLoaded at end, call loadSavedAnalysis()
-loadSavedAnalysis();
+// Call loadAtsData on page load
+window.addEventListener('DOMContentLoaded', loadAtsData);
+
+// Call loadCurrentView on page load
+window.addEventListener('DOMContentLoaded', loadCurrentView);
+
+// Save data to local storage
+function saveData(viewId, data) {
+  if (!data) return;
+  try { localStorage.setItem(viewId, JSON.stringify(data)); } catch{}
+}
+
+// Load data from local storage
+function loadData(viewId, renderFunction) {
+  const raw = localStorage.getItem(viewId);
+  if (!raw) return;              // nothing stored
+  try {
+    const data = JSON.parse(raw);
+    if (!data) return;
+    // Render view with saved data
+    const view = document.getElementById(viewId);
+    view.innerHTML = renderFunction(data);
+    toggleView(viewId);
+  } catch {}
+}
+
+// Call loadData for each view on page load
+window.addEventListener('DOMContentLoaded', () => {
+  loadData('atsView', renderAtsEvaluation);
+  loadData('jobMatchView', renderJobMatch);
+  // Add similar calls for other views if needed
+});
+
+// Add New Upload button handler
+const newUploadBtn = document.getElementById('newUploadBtn');
+if (newUploadBtn) {
+  newUploadBtn.addEventListener('click', () => {
+    const proceed = confirm('⚠️ Starting a new upload will clear your current analysis and reload the page. Continue?');
+    if (!proceed) return;
+
+    // Clear stored data and refresh to pristine state
+    clearSavedAnalysis();
+    localStorage.removeItem('currentView');
+    uploadedFile = null;
+    location.reload();
+  });
+}
 </script>
 </body>
 </html>
