@@ -980,10 +980,10 @@ function showPage(pageId) {
   document.querySelectorAll('#pageContent .page')
           .forEach(p => p.style.display = (p.id === pageId) ? 'block' : 'none');
 
-  /* ↓↓↓ wait two frames then scroll so the wrapper is fully laid out */
+  // Use a reliable timeout to ensure the panel is rendered before scrolling.
   setTimeout(() => {
-    window.scrollTo({ top: wrapper.offsetTop - 20, behavior: 'smooth' });
-  }, 0);
+    wrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 100);
 
   // update animated heading
   const headerMap = {
@@ -1008,11 +1008,11 @@ function setAnimatedHeader(el, text) {
   });
 }
 
-/* 3.  Close the slide-up panel when the user clicks ABOVE it  */
+/* 3.  Close the slide-up panel when the user clicks ABOVE it (Temporarily Disabled) */
+/*
 document.addEventListener('click', e => {
-  /* ⬇︎  NEW  — if the click was on the theme switch, do nothing */
+  // if the click was on the theme switch, do nothing
   if (e.target.closest('#modeToggle') || e.target.closest('.switch')) return;
-  /* ↑↑ prevents the panel from vanishing when you toggle dark / light */
 
   const wrapper = document.getElementById('pageContent');
   if (wrapper && wrapper.style.display === 'block') {
@@ -1024,6 +1024,7 @@ document.addEventListener('click', e => {
     }
   }
 });
+*/
 
 // 4.  Contact-form AJAX submit (Formspree)
 const contactForm = document.getElementById('contactForm');
