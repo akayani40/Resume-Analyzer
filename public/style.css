@@ -835,3 +835,91 @@ input:checked + .slider:before {
     transform: scale(1);
   }
 }
+
+.job-match-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
+  margin-top: 40px;
+}
+
+.jd-input-panel, .jd-results-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.jd-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#compareResult span {
+  font-weight: bold;
+}
+
+
+.job-match-wrapper {
+  margin-top: 40px;
+  width: 100%;
+}
+
+.job-match-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
+  margin-top: 20px;
+}
+
+.match-card {
+  background: var(--card);
+  padding: 24px;
+  border-radius: 14px;
+  box-shadow: 0 2px 12px var(--shadow);
+  transition: transform 0.3s ease;
+}
+
+.match-card:hover {
+  transform: translateY(-4px);
+}
+
+.match-card h3 {
+  font-size: 18px;
+  margin-bottom: 16px;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+
+.match-card ul {
+  padding-left: 20px;
+  margin: 0;
+}
+
+.match-card li {
+  margin-bottom: 8px;
+}
+
+.skill-list li::before {
+  content: "✔️";
+  margin-right: 8px;
+  color: green;
+}
+
+.missing-list li::before {
+  content: "❌";
+  margin-right: 8px;
+  color: red;
+}
+
+.suggestion-box ul li::before {
+  content: "💡";
+  margin-right: 6px;
+}
+
+@media (max-width: 768px) {
+  .job-match-grid {
+    grid-template-columns: 1fr !important;
+  }
+}

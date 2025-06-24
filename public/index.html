@@ -7,6 +7,7 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <!-- Add jsPDF library for PDF generation -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
     const savedTheme = localStorage.getItem('theme') || 'light';
     document.documentElement.setAttribute('data-theme', savedTheme);
@@ -22,6 +23,47 @@
 
     /* remove inner feature-panel boxes */
     .feature { background: transparent; border: none; }
+
+    /*  add once, just after the other styles  */
+    .footer-content.disabled {
+      pointer-events: none;
+      opacity: 0.35;                 /* visual cue while analysis runs */
+    }
+
+    .contact-form textarea {
+      resize: vertical;
+      max-height: 260px;   /* prevents the card from stretching */
+    }
+
+    /* put these with the other styles */
+    .contact-form          { max-width: 600px; margin: 0 auto; }
+    .contact-form textarea { overflow-y: auto; max-height: 260px; }
+
+    /* Contact form sizing */
+    .contact-form          { width: 100%; padding-right: 24px; }
+    .contact-form input,
+    .contact-form textarea { width: 100%; }
+
+    .contact-form textarea {
+      overflow-y: auto;
+      max-height: 260px;
+    }
+
+    /* Job-Match layout */
+    .job-match-wrapper { width: 100%; }
+    .job-match-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+    }
+    .match-card {
+      flex: 1 1 300px;
+      background: var(--bg);
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      color: var(--text);
+    }
   </style>
 </head>
 <body>
@@ -76,7 +118,7 @@
     <div class="upload-area" id="drop-zone">
       <div class="upload-icon">📄</div>
       <p class="upload-text">Select or drag your file</p>
-      <input id="resumeInput" type="file" name="resume" accept=".pdf,.docx,.txt" required />
+      <input id="resumeUpload" type="file" name="resume" accept=".pdf,.docx,.txt" required />
     </div>
   </form>
 </div>
@@ -565,163 +607,336 @@
   </style>
 
   <script>
-    function listSection(title, arr) {
-      if (Array.isArray(arr) && arr.length) {
-        return `<h4>${title}</h4><ul>${arr.map(i => `<li>${i}</li>`).join('')}</ul>`;
-      }
-      return '';
-    }
+// === global state ===========================================================
+let uploadedFile = null;      // remember the resume so we can reuse it later
 
-    // ---- Modal Page Logic (About / How It Works / Contact) ----
-    function animateHeader(el, text) {
-      if (!el) return;
-      el.innerHTML = '';                       // Clear existing spans
-      text.split('').forEach((char, idx) => {  // Split into chars
-        const span = document.createElement('span');
-        span.textContent = char;
-        span.style.animationDelay = (idx * 0.04) + 's';
-        el.appendChild(span);
-      });
-    }
+// Progress bar states with realistic messages and minimum durations (in milliseconds)
+const progressStates = [
+  { percent: 15, message: "📄 Reading your resume...", minDuration: 1000 },
+  { percent: 30, message: "🔍 Extracting text content...", minDuration: 1500 },
+  { percent: 45, message: "🤖 Initializing AI analysis...", minDuration: 2000 },
+  { percent: 60, message: "🎯 Analyzing skills and experience...", minDuration: 2500 },
+  { percent: 75, message: "📊 Evaluating ATS compatibility...", minDuration: 2000 },
+  { percent: 90, message: "✨ Preparing your detailed insights...", minDuration: 1500 }
+];
 
-    // Header texts for each section
-    const HEADER_TEXTS = {
-      'about': 'About ParsePro',
-      'how-it-works': 'How It Works',
-      'contact': 'Contact'
-    };
+let currentStateIndex = 0;
+let analysisStartTime;
 
-    function showPage(pageId) {
-      // Hide all sub-pages
-      document.querySelectorAll('#pageContent .page')
-              .forEach(p => p.style.display = 'none');
-
-      // Show container & selected page
-      const container = document.getElementById('pageContent');
-      container.style.display = 'block';
-      const page = document.getElementById(pageId);
-      if (page) {
-        page.style.display = 'block';
-        // Animate header
-        const headerEl = page.querySelector('.animated-header');
-        animateHeader(headerEl, HEADER_TEXTS[pageId] || '');
-        // Smoothly scroll the page so the selected section appears just below the upload area
-        page.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-      // Always show footer when a page is open
-      if (footerEl) footerEl.style.transform = 'translateY(0)';
-      allowHide = false; // Reset scroll detection
-
-      if (pageId === 'contact') {
-  const contactForm = document.getElementById('contactForm');
-  if (contactForm && !contactForm.hasAttribute('data-handler-attached')) {
-    contactForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const formData = new FormData(contactForm);
-      const submitButton = contactForm.querySelector('button[type="submit"]');
-      submitButton.disabled = true;
-      submitButton.textContent = 'Sending...';
-      try {
-        const response = await fetch(contactForm.action, {
-          method: 'POST',
-          body: formData,
-          headers: { 'Accept': 'application/json' }
-        });
-        if (response.ok) {
-          submitButton.textContent = 'Sent!';
-          contactForm.reset();
-        } else {
-          submitButton.textContent = 'Error, try again';
-        }
-      } catch (err) {
-        console.error('Contact form submission failed', err);
-        submitButton.textContent = 'Error, try again';
-      } finally {
-        setTimeout(() => {
-          submitButton.disabled = false;
-          submitButton.textContent = 'Send Message';
-        }, 5000);
-      }
-    });
-
-    // Mark it so we don’t attach twice
-    contactForm.setAttribute('data-handler-attached', 'true');
+function updateProgressBar(percent, message) {
+  const progressBar = document.getElementById('progressBar');
+  const progressText = document.getElementById('progressText');
+  const progressMessage = document.getElementById('progressMessage');
+  
+  // Ensure percent never exceeds 100
+  const clampedPercent = Math.min(Math.max(percent, 0), 100);
+  
+  progressBar.style.width = `${clampedPercent}%`;
+  progressText.textContent = `${clampedPercent}%`;
+  if (message) {
+    progressMessage.textContent = message;
   }
 }
 
+function hideUploadUI() {
+  const uploadUI = document.getElementById('uploadUI');
+  if (uploadUI && uploadUI.style.display !== 'none') {
+    uploadUI.classList.add('fade-out');
+    setTimeout(() => { uploadUI.style.display = 'none'; }, 700);
+  }
+}
 
+async function startProgress() {
+  hideUploadUI();                   // <— vanish the file-upload box immediately
+  const progressWrapper = document.getElementById('progressWrapper');
+  progressWrapper.style.display = 'block';
+  progressWrapper.classList.add('show', 'progress-transition');
+  
+  // Reset progress
+  currentStateIndex = 0;
+  analysisStartTime = Date.now();
+  updateProgressBar(0, progressStates[0].message);
 
-
+  // Process each state with minimum duration
+  for (let i = 0; i < progressStates.length; i++) {
+    const state = progressStates[i];
+    const nextState = progressStates[i + 1];
+    
+    // Update to current state
+    updateProgressBar(state.percent, state.message);
+    
+    // Wait for minimum duration
+    await new Promise(resolve => setTimeout(resolve, state.minDuration));
+    
+    // If there's a next state, animate to it
+    if (nextState) {
+      const steps = (nextState.percent - state.percent) * 2; // Double the steps for smoother animation
+      const stepDuration = state.minDuration / steps;
+      
+      for (let j = 1; j <= steps; j++) {
+        const currentPercent = state.percent + ((nextState.percent - state.percent) * (j / steps));
+        updateProgressBar(currentPercent, state.message);
+        await new Promise(resolve => setTimeout(resolve, stepDuration));
+      }
     }
+  }
+}
 
-    // No outside-click logic needed for inline section display
+async function completeProgress(success = true) {
+  // Ensure minimum total duration of 12 seconds
+  const elapsedTime = Date.now() - analysisStartTime;
+  const minimumDuration = 12000; // 12 seconds
+  
+  if (elapsedTime < minimumDuration) {
+    await new Promise(resolve => setTimeout(resolve, minimumDuration - elapsedTime));
+  }
+  
+  if (success) {
+    updateProgressBar(100, "✅ Analysis complete! Displaying your results...");
+    await new Promise(r => setTimeout(r, 1000));
 
-    // ---- Footer Hide / Show (better) ----
-    const footerEl = document.querySelector('.footer');
-    let lastY = window.scrollY;
-    let allowHide = false;
+    const progressWrapper = document.getElementById('progressWrapper');
+    progressWrapper.classList.add('hide');
 
-    window.addEventListener('scroll', () => {
-      const pageContent = document.getElementById('pageContent');
-      const isSectionOpen = pageContent && pageContent.style.display === 'block';
-      if (isSectionOpen) {
-        footerEl.style.transform = 'translateY(0)';
-        return;
-      }
-      if (!allowHide && Math.abs(window.scrollY - lastY) > 60) {
-        allowHide = true;
-      }
-      if (!allowHide) return;
-      const y = window.scrollY;
-      if (y < lastY)  footerEl.style.transform = 'translateY(100%)'; // ↑ up ⇒ hide
-      else            footerEl.style.transform = 'translateY(0)';    // ↓ down ⇒ show
-      lastY = y;
-    }, { passive: true });
+    const controls = document.getElementById('controls');
+    controls.style.display = 'flex';
+    controls.classList.add('tabs-transition', 'show');
 
-    // Enable footer hide when a footer link is clicked (showPage called)
-    const originalShowPage = showPage;
-    showPage = function(id) {
-      originalShowPage(id);
-      // Always show footer when a page is open
-      if (footerEl) footerEl.style.transform = 'translateY(0)';
-      // Prevent footer from hiding while a section is open
-      allowHide = false;
-    };
+    // Hide upload UI
+    const uploadUI = document.getElementById('uploadUI');
+    uploadUI.classList.add('fade-out');
+    setTimeout(() => { 
+      uploadUI.style.display = 'none';
+      progressWrapper.style.display = 'none';
+    }, 700);
+    
+    // Re-enable footer links
+    document.querySelector('.footer-content').classList.remove('disabled');
+    
+    toggleView('atsView');           // now safe – function exists
+  } else {
+    updateProgressBar(95, "❌ Analysis failed. Please try again.");
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    document.getElementById('progressWrapper').style.display = 'none';
+  }
+}
 
-    // Close sections when clicking upper half & reset footer
-    // Also re-enable footer hide after closing section
-    document.addEventListener('mousedown', (e) => {
-  const container = document.getElementById('pageContent');
-  const isInsideContentCard = e.target.closest('.content-card');
+// === 1.  UNIVERSAL LIST RENDERER =================================
+function listMarkup(arr, emptyLabel = '—') {
+  return Array.isArray(arr) && arr.length
+    ? '<ul>' + arr.map(item => `<li>${item}</li>`).join('') + '</ul>'
+    : `<em>${emptyLabel}</em>`;
+}
 
-  if (
-    container.style.display === 'block' &&
-    e.clientY < window.innerHeight / 2 &&
-    !e.target.classList.contains('footer-link') &&
-    !isInsideContentCard // ✅ New: only hide if outside card
-  ) {
-    container.style.display = 'none';
+// === 2.  FULL  ATS-VIEW  RENDERER =================================
+function renderAtsEvaluation(ev = {}) {
+  return `
+  <div class="content-card"><h2>📊 Scores</h2>
+    <p><strong>Target Field:</strong> ${ev.inferredField || '—'}</p>
+    <p><strong>ATS Score:</strong> ${ev.atsScore ?? '—'}%</p>
+    <p><strong>Recruiter Score:</strong> ${ev.recruiterEngagementLikelihood || '—'}</p>
+    <p><strong>Career-Readiness:</strong> ${ev.careerReadinessScore || '—'}</p>
+    <p><strong>Tone Analysis:</strong> ${ev.toneAnalysis || '—'}</p>
+    <p><strong>Risk Level:</strong> ${ev.riskLevel || '—'}</p>
+    <p><strong>Priority Section:</strong> ${ev.prioritySection || '—'}</p>
+  </div>
+
+  <div class="content-card"><h3>✨ What Recruiters Will Love</h3>
+    ${listMarkup(ev.whatRecruitersWillLove)}
+  </div>
+
+  <div class="content-card"><h3>🛑 Major Gaps / Red Flags</h3>
+    ${listMarkup(ev.redFlags)}</div>
+
+  <div class="content-card"><h3>⚠️ Soft Issues</h3>
+    ${listMarkup(ev.softIssues)}</div>
+
+  <div class="content-card"><h3>🚫 Link / Info Red Flags</h3>
+    ${listMarkup(ev.linkRedFlags)}</div>
+
+  <div class="content-card"><h3>🔍 Keyword & Industry Alignment</h3>
+    ${listMarkup(ev.keywordAlignment)}</div>
+
+  <div class="content-card"><h3>📐 Formatting & ATS Compatibility</h3>
+    ${listMarkup(ev.formattingNotes)}</div>
+
+  <div class="content-card"><h3>🧠 Differentiation Factor</h3>
+    ${listMarkup(ev.differentiationFactor)}</div>
+
+  <div class="content-card"><h3>📈 Growth & Learning Signals</h3>
+    ${listMarkup(ev.growthSignals)}</div>
+
+  <div class="content-card"><h3>🚀 Top 5 Actionable Fixes</h3>
+    ${listMarkup(ev.topFixes)}</div>
+
+  <div class="content-card"><h3>📚 Learning Suggestions</h3>
+    ${listMarkup(ev.learningSuggestions)}</div>
+
+  <div class="content-card"><h3>📌 Why These Scores</h3>
+    ${listMarkup(ev.whyTheseScores)}</div>
+
+  <div class="content-card"><h3>🗣️ Summary Advice</h3>
+    <p>${ev.summaryAdvice || '—'}</p>
+  </div>
+
+  <div class="content-card"><h3>🔮 Recruiter Opinion</h3>
+    <p>${ev.recruiterOpinion || '—'}</p>
+  </div>`;
+}
+
+// === 3.  JOB-MATCH  RENDERER  =====================================
+function renderJobMatch(data = {}) {
+  const matchedSkills = listMarkup(data.matchedSkills || []);
+  const missingSkills = listMarkup(data.missingSkills || []);
+  const suggestions = listMarkup(data.suggestions || []);
+
+  return `
+    <div class="job-match-wrapper">
+      <div class="job-match-grid">
+        <div class="match-card">
+          <h3>📊 Match Summary</h3>
+          <p><strong>Match Score:</strong> ${data.matchScore ?? '—'}%</p>
+          <p><strong>Skills Score:</strong> ${data.skillsScore ?? '—'}%</p>
+          <p><strong>Tools Score:</strong> ${data.toolsScore ?? '—'}%</p>
+        </div>
+
+        <div class="match-card">
+          <h3>✅ Matched Skills</h3>
+          ${matchedSkills}
+
+          <h3 style="margin-top: 24px;">❌ Missing Skills</h3>
+          ${missingSkills}
+        </div>
+      </div>
+
+      <div class="match-card suggestion-box" style="margin-top: 40px;">
+        <h3>💡 AI Suggestions</h3>
+        ${suggestions}
+      </div>
+    </div>
+  `;
+}
+
+// ========================= 1) Resume-upload handler =========================
+const fileInput = document.getElementById('resumeUpload');
+fileInput.addEventListener('change', async (event) => {
+  // Clear any previous analysis as soon as the user selects a file
+  clearSavedAnalysis();
+
+  const file = event.target.files[0];
+  if (!file) return;
+
+  // Reset the input value so selecting the same file again still triggers "change"
+  fileInput.value = '';
+
+  uploadedFile = file;                // save for later "Compare" step
+
+  // Close any open sections first
+  const pageContent = document.getElementById('pageContent');
+  if (pageContent) {
+    pageContent.style.display = 'none';
     document.querySelectorAll('#pageContent .page').forEach(p => p.style.display = 'none');
-    allowHide = true;
-    if (footerEl) footerEl.style.transform = 'translateY(0)';
+  }
+
+  // Disable footer links during loading
+  document.querySelector('.footer-content').classList.add('disabled');
+  
+  const formData = new FormData();
+  formData.append('resume', file);    // NOTE: JD NOT sent here
+
+  try {
+    await startProgress();            // progress bar starts & upload UI vanishes
+
+    const atsRes  = await fetch('/ats-scan', { method: 'POST', body: formData });
+    const atsData = await atsRes.json().catch(() => ({}));   // parse even on 500
+
+    /* Always finish the progress so tabs appear */
+    await completeProgress(true);
+
+    /* --- Render ATS view or show an inline error --- */
+    const atsView = document.getElementById('atsView');
+    if (atsRes.ok && !atsData.error) {
+      atsView.innerHTML = renderAtsEvaluation(atsData.atsEvaluation);
+
+      /* load formatted resume into the editor panel */
+      if (atsData.originalResumeHTML) {
+        document.getElementById('resumeEditor').innerHTML =
+          atsData.originalResumeHTML;
+      }
+
+      // Inside after successfully rendering ATS evaluation (inside if (atsRes.ok ... ))
+      saveAtsData(atsData);
+    } else {
+      atsView.innerHTML =
+        `<p style="color:#e96c6c;">❌ Could not analyse resume (server error).</p>`;
+    }
+  } catch (err) {
+    console.error(err);
+    /* Complete progress so UI recovers, but flag as failure */
+    await completeProgress(true);   // still show tabs
+    document.getElementById('atsView').innerHTML =
+      '<p style="color:#e96c6c;">❌ Unexpected error while analysing resume.</p>';
   }
 });
 
+// ==================== 2) "Compare" button handler ===========================
+document.getElementById('compareBtn').addEventListener('click', async () => {
+  let file = uploadedFile;
+  if (!file) {
+    // prompt for the resume again if it wasn't persisted
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept='.pdf,.docx,.txt';
+    input.click();
+    await new Promise(r => input.onchange = () => r());
+    file = input.files[0];
+    if (!file) return alert('Please re-select your resume to compare.');
+  }
+  const jobDescription = document.getElementById('jdInput').value.trim();
+  if (!jobDescription) {
+    alert('Please paste a job description before comparing.');
+    return;
+  }
 
+  // quick visual feedback inside Job-Match tab
+  const resultDiv = document.getElementById('compareResult');
+  resultDiv.innerHTML = '⏳ Comparing… please wait.';
+
+  const formData = new FormData();
+  formData.append('resume', file);
+  formData.append('jobDescription', jobDescription);
+
+  try {
+    const res = await fetch('/analyze-resume', { method: 'POST', body: formData });
+    if (!res.ok) throw new Error('Comparison failed');
+    const data = await res.json();
+
+    // render your compare results (simplified example)
+    resultDiv.innerHTML = renderJobMatch(data);
+
+    // Inside compareBtn handler, after resultDiv.innerHTML = renderJobMatch(data);
+    saveJobMatch(data);
+  } catch (err) {
+    console.error(err);
+    resultDiv.innerHTML = '❌ Could not compare resume to job description.';
+  }
+});
+
+// Initialize event listeners when the DOM is loaded
     document.addEventListener('DOMContentLoaded', () => {
+  // Theme toggle handler
       const toggle = document.getElementById('modeToggle');
       toggle.checked = localStorage.getItem('theme') === 'dark';
       toggle.addEventListener('change', () => {
         const theme = toggle.checked ? 'dark' : 'light';
         document.documentElement.setAttribute('data-theme', theme);
         localStorage.setItem('theme', theme);
-        // Ensure no refresh or hiding of sections
       });
 
-      toggle.addEventListener('click', e => e.stopPropagation());
+  // Prevent theme toggle from triggering other events
+  toggle.addEventListener('click', e => e.stopPropagation());
 
+  // Drag and drop handlers
       const dropZone = document.getElementById('drop-zone');
-      const fileInput = document.getElementById('resumeInput');
 
 ['dragenter', 'dragover'].forEach(eventName => {
   dropZone.addEventListener(eventName, (e) => {
@@ -738,507 +953,129 @@
 });
 
 dropZone.addEventListener('drop', (e) => {
-  const files = e.dataTransfer.files;
-  if (files.length > 0) {
-    fileInput.files = files;
-    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-  }
-});
-
-fileInput.addEventListener('change', async () => {
-  const file = fileInput.files[0];
-  if (!file) return;
-
-  // Close any open sections first
-  const pageContent = document.getElementById('pageContent');
-  if (pageContent) {
-    pageContent.style.display = 'none';
-    document.querySelectorAll('#pageContent .page').forEach(p => p.style.display = 'none');
-  }
-
-  // Disable footer links during loading
-  document.querySelector('.footer-content').classList.add('disabled');
-
-  document.getElementById('uploadUI').classList.add('fade-out');
-
-  const progressWrapper = document.getElementById('progressWrapper');
-  const progressBar = document.getElementById('progressBar');
-  const progressText = document.getElementById('progressText');
-  const progressMessage = document.getElementById('progressMessage');
-  progressWrapper.style.display = 'block';
-  progressWrapper.style.zIndex = '1001'; // Ensure progress is above everything
-  progressWrapper.classList.add('show', 'progress-transition');
-
-  progressBar.style.width = '0%';
-  progressText.innerText = '0%';
-  progressMessage.innerText = 'Uploading and analyzing your resume...';
-
-  const formData = new FormData();
-  formData.append('resume', file);
-
-  let progress = 0;
-  const interval = setInterval(() => {
-  if (progress >= 98) {
-    clearInterval(interval); // Stop updating at 98%
-    return; // ✅ Don't reset it to 98 again
-  }
-  progress += 4;
-  if (progress > 98) progress = 98; // Cap at 98
-  progressBar.style.width = progress + '%';
-  progressText.innerText = progress + '%';
-}, 120);
-
-  try {
-  const res = await fetch('/analyze-resume', { method: 'POST', body: formData });
-  const data = await res.json();
-
-  clearInterval(interval);
-  progressBar.style.width = '100%';
-  progressText.innerText = '100%';
-  progressMessage.innerHTML = '<span style="font-size:1.1em;">✅ <b>Done! Displaying results...</b></span>';
-
-  // Fetch ATS data
-  const atsRes = await fetch('/ats-scan', { method: 'POST', body: formData });
-  const atsData = await atsRes.json();
-
-  // Now that all data is loaded, update the progress message
-  progressMessage.innerText = '✅ Done! Displaying results...';
-
-  // Wait a moment to ensure all data is processed before showing the tabs
-  await new Promise(resolve => setTimeout(resolve, 1000));
-
-  // Fade out the progress wrapper with slide
-  progressWrapper.classList.add('hide');
-
-  // Prepare and show the tabs with fade/slide in
-  const controls = document.getElementById('controls');
-  controls.classList.add('tabs-transition', 'centered-tabs');
-  setTimeout(() => {
-    controls.classList.add('show');
-  }, 400);
-
-  // Remove the progress wrapper from DOM after transition
-    setTimeout(() => {
-      progressWrapper.style.display = 'none';
-    // Remove centered-tabs class so tabs move up
-    controls.classList.remove('centered-tabs');
-    controls.style.marginTop = '0';
-    // Collapse upload UI smoothly, then remove from flow
-    const uploadUI = document.getElementById('uploadUI');
-    uploadUI.classList.add('fade-out');
-    setTimeout(() => { uploadUI.style.display = 'none'; }, 700);
-    // Re-enable footer links
-    document.querySelector('.footer-content').classList.remove('disabled');
-  }, 900);
-
-  // Show the tabs and content
-  controls.style.display = 'flex';
-  toggleView('jobMatchView'); // TEMP: Show Job Match tab directly
-
-  if (!atsData.error && atsData.atsEvaluation) {
-    const ev = atsData.atsEvaluation;
-    let atsHTML = `<h3>📄 ATS Evaluation</h3>`;
-    atsHTML += `<p><strong>🎯 Career Target:</strong> ${ev.inferredField || '-'}</p>`;
-    atsHTML += `<p><strong>📊 ATS Score:</strong> ${ev.atsScore || '-'}</p>`;
-    atsHTML += `<p><strong>🤝 Recruiter Score:</strong> ${ev.recruiterEngagementLikelihood || '-'}</p>`;
-    atsHTML += `<p><strong>🧭 Career Readiness Score:</strong> ${ev.careerReadinessScore || '-'}</p>`;
-    atsHTML += `<p><strong>🧨 Resume Risk Level:</strong> ${ev.riskLevel || '-'}</p>`;
-    atsHTML += `<p><strong>🔥 Priority Section:</strong> ${ev.prioritySection || '-'}</p>`;
-    atsHTML += listSection('✨ What Recruiters Will Love', ev.whatRecruitersWillLove);
-    atsHTML += listSection('🛑 Major Gaps', ev.redFlags);
-    atsHTML += listSection('⚠️ Soft Issues', ev.softIssues);
-    atsHTML += listSection('🚫 Link or Info Red Flags', ev.linkRedFlags);
-    atsHTML += listSection('📌 Why These Scores', ev.whyTheseScores);
-    atsHTML += listSection('🔍 Keyword & Industry Alignment', ev.keywordAlignment);
-    atsHTML += listSection('🗣️ Tone, Voice & Confidence Check', ev.toneAnalysis ? [ev.toneAnalysis] : []);
-    atsHTML += listSection('📐 Formatting & ATS Compatibility', ev.formattingNotes);
-    atsHTML += listSection('🧠 Differentiation Factor', ev.differentiationFactor);
-    atsHTML += listSection('🧰 Personal Brand & Identity', ev.personalBrand);
-    atsHTML += listSection('📈 Growth & Learning Signals', ev.growthSignals);
-    atsHTML += listSection('🚀 Top 5 Actionable Fixes', ev.topFixes);
-    atsHTML += listSection('📚 What to Learn or Build Next', ev.learningSuggestions);
-    atsHTML += `<h4>🧑‍🏫 Summary & Human Advice</h4><p>${ev.summaryAdvice || '-'}</p>`;
-    atsHTML += `<h4>🔮 If I Were Your Recruiter...</h4><p>${ev.recruiterOpinion || '-'}</p>`;
-
-    const atsDiv = document.getElementById('atsView');
-    atsDiv.innerHTML = `<div class="content-card">${atsHTML}</div>`;
-    atsDiv.classList.add('fade-in');
-    
-    // Use the original resume HTML if available, otherwise generate a formatted resume
-    if (atsData.originalResumeHTML) {
-      // Use the original resume HTML from the server
-      document.getElementById('resumeEditor').innerHTML = atsData.originalResumeHTML;
-    } else {
-      // Fallback to generating HTML from ATS data
-      let resumeHTML = '';
-      
-      // Header with name and contact info
-      if (ev.name) {
-        resumeHTML += `<h1>${ev.name}</h1>`;
-        
-        // Contact info section
-        let contactInfo = '';
-        if (ev.email) contactInfo += ev.email;
-        if (ev.phone) {
-          if (contactInfo) contactInfo += ' | ';
-          contactInfo += ev.phone;
-        }
-        
-        if (contactInfo) {
-          resumeHTML += `<div class="contact-info">${contactInfo}</div>`;
-        }
-      }
-      
-      // Experience section
-      if (ev.experience?.length) {
-        resumeHTML += `<h2>EXPERIENCE</h2>`;
-        
-        ev.experience.forEach(exp => {
-          resumeHTML += `<div class="section">`;
-          resumeHTML += `<p class="job-title">${exp.title}</p>`;
-          resumeHTML += `<div class="job-details">`;
-          resumeHTML += `<span>${exp.company}</span>`;
-          resumeHTML += `<span>${exp.dates}${exp.location ? ' – ' + exp.location : ''}</span>`;
-          resumeHTML += `</div>`;
-          resumeHTML += `<ul>`;
-          resumeHTML += `<li>Accomplishment or responsibility (edit this)</li>`;
-          resumeHTML += `<li>Another accomplishment or responsibility (edit this)</li>`;
-          resumeHTML += `</ul>`;
-          resumeHTML += `</div>`;
-        });
-      }
-      
-      // Education section
-      if (ev.education?.length) {
-        resumeHTML += `<h2>EDUCATION</h2>`;
-        
-        ev.education.forEach(ed => {
-          resumeHTML += `<div class="section">`;
-          resumeHTML += `<p class="job-title">${ed.degree}</p>`;
-          resumeHTML += `<div class="job-details">`;
-          resumeHTML += `<span>${ed.organization}</span>`;
-          if (ed.dates) resumeHTML += `<span>${ed.dates}</span>`;
-          resumeHTML += `</div>`;
-          resumeHTML += `</div>`;
-        });
-      }
-      
-      // Skills section (placeholder)
-      resumeHTML += `<h2>SKILLS</h2>`;
-      resumeHTML += `<p>Edit this section to add your skills</p>`;
-      
-      // Update the resume editor with the formatted HTML content
-      document.getElementById('resumeEditor').innerHTML = resumeHTML;
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      const fileInput = document.getElementById('resumeUpload');
+      fileInput.files = e.dataTransfer.files;
+      fileInput.dispatchEvent(new Event('change'));
     }
-  }
-
-  // Compare JD button
-  document.getElementById('compareBtn').addEventListener('click', async () => {
-    const jd = document.getElementById('jdInput').value.trim();
-    if (!jd) return alert('Please paste a job description first.');
-    if (!window.__plainResumeText) return alert('Resume text not available yet.');
-    document.getElementById('compareBtn').disabled = true;
-    const res = await fetch('/compare-jd', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ resumeText: window.__plainResumeText, jobDescription: jd })
-    });
-    const data = await res.json();
-    document.getElementById('compareBtn').disabled = false;
-    if (data.error) return alert(data.error);
-    let html = '';
-    if (data.matchedSkills) {
-      html += `<h4>Matched Skills (${data.matchedSkills.length})</h4><ul>${data.matchedSkills.map(s=>`<li>${s}</li>`).join('')}</ul>`;
-        }
-    if (data.missingSkills) {
-      html += `<h4>Missing Skills (${data.missingSkills.length})</h4><ul>${data.missingSkills.map(s=>`<li>${s}</li>`).join('')}</ul>`;
-    }
-    if (data.overallMatch) {
-      html += `<p><strong>Overall Match:</strong> ${data.overallMatch}</p>`;
-    }
-    document.getElementById('compareResult').innerHTML = html;
   });
-
-  // Store plain resume text after ATS scan success
-  window.__plainResumeText = atsData.plainTextResume || '';
-
-} catch (err) {
-  console.error(err);
-  clearInterval(interval);
-  progressMessage.innerHTML = '<span style="color: red;">❌ <strong>Something went wrong.</strong></span>';
-}
-
 });
 
-});
-
-function toggleView(view) {
-  const views = ['atsView', 'jobMatchView', 'chatView'];
-  views.forEach(id => {
+// ①  Add helper just after the "global state" block
+function toggleView(viewId) {
+  ['atsView', 'jobMatchView', 'chatView'].forEach(id => {
     const el = document.getElementById(id);
-    const btn = document.querySelector(`button[onclick="toggleView('${id}')"]`);
-    if (el) el.style.display = view === id ? 'block' : 'none';
-    if (btn) btn.classList.toggle('active-tab', view === id);
+    if (el) el.style.display = (id === viewId) ? 'block' : 'none';
   });
 }
 
-// Chat functionality with conversation history
-let resumeText = ''; // Will store the parsed resume text
-let conversationHistory = []; // Will store the conversation history
+// === NEW helper to show the static pages =================================================
+function showPage(pageId) {
+  const wrapper = document.getElementById('pageContent');
+  if (!wrapper) return;
 
-document.addEventListener('DOMContentLoaded', () => {
-  const chatInput = document.getElementById('chatInput');
-  const sendButton = document.getElementById('sendMessage');
-  const chatMessages = document.getElementById('chatMessages');
-  const resumeEditor = document.getElementById('resumeEditor');
-  const downloadButton = document.getElementById('downloadResume');
-  
-  // Send message when clicking the send button
-  sendButton.addEventListener('click', sendMessage);
-  
-  // Send message when pressing Enter (but allow Shift+Enter for new lines)
-  chatInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
+  wrapper.style.display = 'block';
+  document.querySelectorAll('#pageContent .page')
+          .forEach(p => p.style.display = (p.id === pageId) ? 'block' : 'none');
+
+  /* ↓↓↓ wait two frames then scroll so the wrapper is fully laid out */
+  setTimeout(() => {
+    window.scrollTo({ top: wrapper.offsetTop - 20, behavior: 'smooth' });
+  }, 0);
+
+  // update animated heading
+  const headerMap = {
+    'about'        : { id: 'about-header',  text: 'About ParsePro' },
+    'how-it-works' : { id: 'how-header',    text: 'How It Works'   },
+    'contact'      : { id: 'contact-header',text: 'Contact Us'     }
+  };
+  const info = headerMap[pageId];
+  if (info) setAnimatedHeader(document.getElementById(info.id), info.text);
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// 1.  Animated section-title helper (About, How-It-Works, Contact)
+function setAnimatedHeader(el, text) {
+  if (!el) return;
+  el.innerHTML = '';                           // clear previous
+  text.split('').forEach((ch, i) => {
+    const s = document.createElement('span');
+    s.textContent = (ch === ' ') ? '\u00A0' : ch;
+    s.style.animationDelay = `${i * 40}ms`;    // stagger letters
+    el.appendChild(s);
   });
-  
-  // Download resume as PDF file
-  downloadButton.addEventListener('click', () => {
-    const content = resumeEditor.innerHTML; // Get HTML content to preserve formatting
-    
-    // Create PDF document
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4'
-    });
-    
-    // Set font and margins
-    doc.setFont('helvetica', 'normal');
-    const margin = 20; // margin in mm
-    
-    // Use HTML content to generate PDF
-    // This is a simplified approach - in a production app, you might use html2canvas or similar
-    // to capture the exact formatting
-    
-    // Extract text content but preserve some basic formatting
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = content;
-    
-    // Get all text nodes and elements in order
-    const textNodes = [];
-    const walker = document.createTreeWalker(
-      tempDiv,
-      NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
-      null,
-      false
-    );
-    
-    let node;
-    let y = margin;
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    
-    // Process each node to maintain basic formatting
-    while ((node = walker.nextNode())) {
-      if (node.nodeType === Node.TEXT_NODE && node.textContent.trim()) {
-        // Get parent element to determine styling
-        const parent = node.parentNode;
-        const text = node.textContent.trim();
-        
-        if (!text) continue;
-        
-        // Check if we need a new page
-        if (y > pageHeight - margin) {
-          doc.addPage();
-          y = margin;
-        }
-        
-        // Apply different styling based on parent element
-        if (parent.tagName === 'H1') {
-          doc.setFontSize(18);
-          doc.setFont('helvetica', 'bold');
-          doc.text(text, margin, y);
-          y += 10;
-        } else if (parent.tagName === 'H2') {
-          doc.setFontSize(14);
-          doc.setFont('helvetica', 'bold');
-          doc.text(text, margin, y);
-          y += 8;
-        } else if (parent.tagName === 'B' || parent.tagName === 'STRONG') {
-          doc.setFontSize(10);
-          doc.setFont('helvetica', 'bold');
-          doc.text(text, margin, y);
-          y += 5;
-        } else {
-          doc.setFontSize(10);
-          doc.setFont('helvetica', 'normal');
-          
-          // Handle line wrapping for long lines
-          const splitLines = doc.splitTextToSize(text, pageWidth - 2 * margin);
-          splitLines.forEach(line => {
-            doc.text(line, margin, y);
-            y += 5;
-          });
-        }
-      } else if (node.nodeType === Node.ELEMENT_NODE) {
-        // Add spacing for certain elements
-        if (node.tagName === 'BR' || node.tagName === 'P' || node.tagName === 'DIV') {
-          y += 5;
-        } else if (node.tagName === 'H1' || node.tagName === 'H2') {
-          y += 5;
-        }
-      }
+}
+
+/* 3.  Close the slide-up panel when the user clicks ABOVE it  */
+document.addEventListener('click', e => {
+  /* ⬇︎  NEW  — if the click was on the theme switch, do nothing */
+  if (e.target.closest('#modeToggle') || e.target.closest('.switch')) return;
+  /* ↑↑ prevents the panel from vanishing when you toggle dark / light */
+
+  const wrapper = document.getElementById('pageContent');
+  if (wrapper && wrapper.style.display === 'block') {
+    const rect = wrapper.getBoundingClientRect();
+    if (e.clientY < rect.top) {          // click occurred above the panel
+      wrapper.style.display = 'none';
+      document.querySelectorAll('#pageContent .page')
+              .forEach(p => p.style.display = 'none');
     }
-    
-    // Save the PDF
-    doc.save('my_resume.pdf');
-  });
-  
-  // Function to send message to the chat API
-  async function sendMessage(event) {
-    event.preventDefault(); // Prevent default form submission behavior
-
-    const message = chatInput.value.trim();
-    if (!message) return;
-
-    // Add user message to chat
-    addMessageToChat(message, 'user');
-    chatInput.value = '';
-
-    // Disable the send button and start cooldown
-    sendButton.disabled = true;
-    let cooldownTime = 10; // 10 seconds cooldown
-    const cooldownMessage = document.createElement('div');
-    cooldownMessage.className = 'cooldown-message';
-    cooldownMessage.innerText = `Please wait ${cooldownTime} seconds before sending another message.`;
-    sendButton.parentNode.appendChild(cooldownMessage);
-
-    const cooldownInterval = setInterval(() => {
-      cooldownTime--;
-      cooldownMessage.innerText = `Please wait ${cooldownTime} seconds before sending another message.`;
-      if (cooldownTime <= 0) {
-        clearInterval(cooldownInterval);
-        sendButton.disabled = false;
-        cooldownMessage.remove();
-      }
-    }, 1000);
-
-    // Show typing indicator
-    const typingIndicator = document.createElement('div');
-    typingIndicator.className = 'message ai-message typing-indicator';
-    typingIndicator.innerHTML = '<div class="message-content">Typing...</div>';
-    chatMessages.appendChild(typingIndicator);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-    
-    try {
-      // Get current resume content from editor
-      const currentResumeText = resumeEditor.innerText;
-      
-      // Send message to API with conversation history
-      const response = await fetch('/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          message,
-          resumeText: currentResumeText,
-          conversationHistory
-        })
-      });
-      
-      // Remove typing indicator
-      chatMessages.removeChild(typingIndicator);
-      
-      const data = await response.json();
-      
-      if (data.error) {
-        addMessageToChat('Sorry, there was an error processing your request.', 'ai');
-      } else {
-        // Add AI response to chat
-        addMessageToChat(data.reply, 'ai');
-        
-        // Update conversation history if provided
-        if (data.conversationHistory) {
-          conversationHistory = data.conversationHistory;
-        } else {
-          // If server doesn't return history, maintain it manually
-          conversationHistory.push(
-            { role: 'user', content: message },
-            { role: 'assistant', content: data.reply }
-          );
-        }
-      }
-    } catch (error) {
-      // Remove typing indicator if still present
-      if (typingIndicator.parentNode) {
-        chatMessages.removeChild(typingIndicator);
-      }
-      
-      console.error('Chat error:', error);
-      addMessageToChat('Sorry, there was an error connecting to the server.', 'ai');
-    } finally {
-      typingIndicator.remove();
-    }
-  }
-  
-  // Function to add a message to the chat
-  function addMessageToChat(message, sender) {
-    const messageElement = document.createElement('div');
-    messageElement.className = `message ${sender}-message`;
-    messageElement.innerHTML = `<div class="message-content">${message}</div>`;
-
-    // Prevent default behavior for any links or clickable elements
-    messageElement.querySelectorAll('a, .clickable').forEach(element => {
-      element.addEventListener('click', (event) => {
-        event.preventDefault(); // Prevent default link behavior
-        // Add any additional logic for handling the click, if needed
-      });
-    });
-
-    chatMessages.appendChild(messageElement);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 });
 
-// Intercept Contact Form submission to avoid page refresh
+// 4.  Contact-form AJAX submit (Formspree)
 const contactForm = document.getElementById('contactForm');
 if (contactForm) {
-  contactForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const formData = new FormData(contactForm);
-    const submitButton = contactForm.querySelector('button[type="submit"]');
-    submitButton.disabled = true;
-    submitButton.textContent = 'Sending...';
+  contactForm.addEventListener('submit', async ev => {
+    ev.preventDefault();
     try {
-      const response = await fetch(contactForm.action, {
+      const res = await fetch(contactForm.action, {
         method: 'POST',
-        body: formData,
+        body: new FormData(contactForm),
         headers: { 'Accept': 'application/json' }
       });
-      if (response.ok) {
-        submitButton.textContent = 'Sent!';
-        // Optionally clear the form fields
+      if (res.ok) {
+        alert('✅ Thank you! Your message was sent.');
         contactForm.reset();
       } else {
-        submitButton.textContent = 'Error, try again';
-        console.error('Contact form error', await response.text());
+        alert('❌ Sorry, there was a problem. Please try again.');
       }
-    } catch (err) {
-      submitButton.textContent = 'Error, try again';
-      console.error('Contact form submission failed', err);
-    } finally {
-      setTimeout(() => {
-        submitButton.disabled = false;
-        submitButton.textContent = 'Send Message';
-      }, 5000); // Re-enable after 5s
+    } catch {
+      alert('❌ Network error. Please try again.');
     }
   });
 }
-  </script>
+
+// === LocalStorage persistence helpers =====================================
+function saveAtsData(data) {
+  if (!data?.atsEvaluation || data.atsEvaluation.atsScore === 0) return;
+  try { localStorage.setItem('atsData', JSON.stringify({ ok:true, data })); } catch{}
+}
+function saveJobMatch(data) {
+  try { localStorage.setItem('jobMatchData', JSON.stringify(data)); } catch {}
+}
+function clearSavedAnalysis() {
+  localStorage.removeItem('atsData');
+  localStorage.removeItem('jobMatchData');
+}
+function loadSavedAnalysis() {
+  const raw = localStorage.getItem('atsData');
+  if (!raw) return;              // nothing stored
+  try {
+    const payload = JSON.parse(raw);
+    if (!payload.ok || !payload.data?.atsEvaluation ||
+        payload.data.atsEvaluation.atsScore === 0) {
+      clearSavedAnalysis();      // stale or placeholder → start fresh
+      return;
+    }
+    // … existing code that rebuilds the UI …
+  } catch { clearSavedAnalysis(); }
+}
+
+// Inside DOMContentLoaded at end, call loadSavedAnalysis()
+loadSavedAnalysis();
+</script>
 </body>
 </html>

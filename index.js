@@ -15,17 +15,82 @@ function isValidJson(str) {
   }
 }
 
+// Helper function to build the prompt for resume analysis
+function buildPrompt(resumeText, jobDescription) {
+  return `
+You are an expert ATS system and recruiter. Analyze this resume against the job description.
+Provide detailed, actionable feedback.
+
+RESUME:
+${resumeText}
+
+JOB DESCRIPTION:
+${jobDescription}
+
+Provide a JSON response with the following structure:
+{
+  "matchScore": <0-100 score based on overall match>,
+  "skillsScore": <0-100 score based on required skills match>,
+  "toolsScore": <0-100 score based on required tools/technologies match>,
+  "matchedSkills": [<array of skills found in both resume and job description>],
+  "missingSkills": [<array of required skills from job description not found in resume>],
+  "suggestions": [<array of specific, actionable improvements>]
+}
+
+Focus on accuracy and actionable feedback.`.trim();
+}
+
+// Helper function to parse and validate the model response
+function parseModelResponse(responseContent) {
+  try {
+    // First try to parse the JSON directly
+    const parsed = JSON.parse(responseContent);
+    
+    // Validate the required fields
+    const requiredFields = ['matchScore', 'skillsScore', 'toolsScore', 'matchedSkills', 'missingSkills', 'suggestions'];
+    const missingFields = requiredFields.filter(field => !(field in parsed));
+    
+    if (missingFields.length > 0) {
+      console.error('❌ Missing required fields in response:', missingFields);
+      throw new Error('Invalid response format');
+    }
+    
+    // Ensure scores are within valid range
+    const scores = ['matchScore', 'skillsScore', 'toolsScore'];
+    scores.forEach(score => {
+      parsed[score] = Math.max(0, Math.min(100, parsed[score]));
+    });
+    
+    // Ensure arrays are actually arrays
+    ['matchedSkills', 'missingSkills', 'suggestions'].forEach(field => {
+      if (!Array.isArray(parsed[field])) {
+        parsed[field] = [];
+      }
+    });
+    
+    return parsed;
+  } catch (error) {
+    console.error('❌ Error parsing model response:', error);
+    throw new Error('Failed to parse model response');
+  }
+}
+
 const app = express();
 const upload = multer();
 const PORT = 3000;
 
 // IMPORTANT: Set to true to use mock data and avoid API charges
-// This should override any cached or previously set values
 const MOCK_MODE = process.env.MOCK_MODE === 'true';
+if (!process.env.MOCK_MODE) {
+  console.warn('⚠️ MOCK_MODE not set in .env file. Defaulting to LIVE mode.');
+}
+if (!process.env.OPENAI_KEY && !MOCK_MODE) {
+  console.error('❌ OpenAI API key not configured and MOCK_MODE is false.');
+}
 
 const OPENAI_KEY = process.env.OPENAI_KEY;
 // Use a fake API key in mock mode to prevent accidental API calls
-const openai = new OpenAI({ apiKey: MOCK_MODE ? 'mock-key-to-prevent-charges' : OPENAI_KEY });
+const openai = new OpenAI({ apiKey: MOCK_MODE ? 'mock-key' : OPENAI_KEY });
 
 const ADV_MODEL = process.env.ADV_MODEL || 'gpt-4o';
 
@@ -39,184 +104,63 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
 app.post('/analyze-resume', upload.single('resume'), async (req, res) => {
-  console.log(`🔍 MOCK_MODE value at runtime is:`, MOCK_MODE);
-
-  // ✅ MOCK_MODE first — do NOT touch req.file if MOCK_MODE is true:
-  if (MOCK_MODE) {
-    console.log('📌 Using MOCK data for resume analysis');
-    return res.json({
-      message: '✅ Resume parsed and categorized',
-      categorizedSkills: {
-        Languages: ['JavaScript', 'Python'],
-        Frameworks: ['React', 'Node.js'],
-        Tools: ['Git'],
-        Cloud: ['AWS'],
-        Design: ['Figma'],
-        'Soft Skills': ['Communication'],
-        Other: ['Agile']
-      },
-      feedback: `Your resume is solid but could benefit from more metrics in experience.
-
-For technical resumes:
-- Quantify your impact (e.g., "reduced load time by 30%")
-- Add links to projects or GitHub
-- Clarify frameworks/tools per project
-
-For non-technical resumes:
-- Expand on leadership or teamwork experience
-- Emphasize communication and initiative`,
-      projectIdeas: `Project 1: Build a resume parser web app using Node.js and OpenAI APIs.\n\nProject 2: Create a personal portfolio that auto-updates using GitHub activity.`,
-      skillStrength: {
-        Languages: 2,
-        Frameworks: 2,
-        Tools: 1,
-        Cloud: 1,
-        Design: 1,
-        'Soft Skills': 1,
-        Other: 1
-      }
-    });
-  }
-
-  // ✅ Now check file AFTER mock check
-  const file = req.file;
-  if (!file) return res.status(400).json({ error: 'No resume file uploaded' });
-
-  // 🚀 LIVE mode:
   try {
-    console.log('🚀 Using LIVE mode for resume analysis');
-    const parsed = await pdfParse(file.buffer);
-    const resumeText = parsed.text;
+    const resumeBuffer = req.file.buffer;
+    const resumeText = (await pdfParse(resumeBuffer)).text;
+    const { jobDescription } = req.body;
 
-    let resumeForAnalysis = resumeText;
+    console.log('✅ Resume and JD received.');
+    console.log('MOCK_MODE:', MOCK_MODE);
+    console.log('📝 Job Description Length:', jobDescription?.length || 0);
+    console.log('📄 Resume Text Length:', resumeText?.length || 0);
 
-    // Summarize if resume is long
-    if (resumeText.length > 2000) {
-      const summaryPrompt = `
-Summarize the following resume section by section (Education, Experience, Skills, etc.).
-Keep all key details, but make it as concise as possible for an AI to analyze.
-
-Resume:
-"""
-${resumeText}
-"""
-Return ONLY the summary, no extra comments.
-      `.trim();
-
-      const summaryResponse = await openai.chat.completions.create({
-        model: ADV_MODEL,
-        messages: [{ role: 'user', content: summaryPrompt }],
-        temperature: 0.2,
-        max_tokens: 1024 // You can adjust this if needed
-      });
-
-      resumeForAnalysis = summaryResponse.choices[0]?.message?.content || resumeText;
+    if (!resumeText || !jobDescription) {
+      console.error('❌ Missing resume or JD.');
+      return res.status(400).json({ error: 'Missing resume or job description' });
     }
 
-    const skillsPrompt = `
-Extract and categorize skills from this resume text:
+    if (MOCK_MODE) {
+      console.log('📌 Using MOCK data for analysis');
+      return res.json({
+        matchScore: 76,
+        skillsScore: 80,
+        toolsScore: 65,
+        matchedSkills: ["React", "JavaScript", "Git"],
+        missingSkills: ["TypeScript", "Docker", "Agile"],
+        suggestions: [
+          "Mention Agile methodologies",
+          "Include TypeScript experience",
+          "Add metrics to React achievements"
+        ]
+      });
+    }
 
-${resumeForAnalysis}
+    if (!OPENAI_KEY) {
+      console.error('❌ OpenAI API key not configured');
+      return res.status(500).json({ error: 'OpenAI API key not configured' });
+    }
 
-Return a JSON object with these categories:
-- Languages (programming languages)
-- Frameworks (software frameworks and libraries)
-- Tools (software tools, IDEs, etc.)
-- Cloud (cloud platforms and services)
-- Design (design tools and methodologies)
-- Soft Skills (communication, teamwork, etc.)
-- Other (any other skills that don't fit above)
+    console.log('🚀 Sending request to OpenAI...');
+    const prompt = buildPrompt(resumeText, jobDescription);
 
-For each category, provide an array of skills. If a category has no skills, return an empty array.
-Return ONLY valid JSON without any explanation or markdown.
-    `.trim();
-
-    const gptSkills = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [{ role: 'user', content: skillsPrompt }],
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4',
+      messages: [{ role: 'user', content: prompt }],
       temperature: 0.3
     });
 
-    let categorizedSkills = {};
-    let rawSkillsText = gptSkills.choices[0]?.message?.content || '{}';
-    
-    // Remove markdown block if it exists
-    rawSkillsText = rawSkillsText.replace(/```json|```/g, '').trim();
-    
-    try {
-      categorizedSkills = JSON.parse(rawSkillsText);
-    } catch (err) {
-      console.error('Error parsing skills JSON:', err);
-      categorizedSkills = {
-        Languages: [],
-        Frameworks: [],
-        Tools: [],
-        Cloud: [],
-        Design: [],
-        'Soft Skills': [],
-        Other: []
-      };
-    }
-    
+    console.log('✅ Received response from OpenAI');
+    const result = parseModelResponse(response.choices[0].message.content);
+    return res.json(result);
 
-    const skillStrength = {};
-    Object.keys(categorizedSkills).forEach(category => {
-      const count = categorizedSkills[category].length;
-      skillStrength[category] = count > 3 ? 3 : count;
+  } catch (error) {
+    console.error('❌ Error in /analyze-resume:', error);
+    return res.status(500).json({ 
+      error: 'Failed to analyze resume',
+      details: error.message 
     });
-
-    const feedbackPrompt = `
-You're a professional resume reviewer helping applicants from ALL industries.
-A user has uploaded the following resume text:
-
-${resumeForAnalysis}
-
-Give 3–4 specific and encouraging suggestions for what they should improve.
-Include comments about how their skills are presented, any missing skills you notice, and general resume improvements.
-Adapt advice to both tech and non-tech resumes.
-Create a line of space between tech-related and non-tech-related advice.
-Output plain text only.
-    `.trim();
-
-    const gptFeedback = await openai.chat.completions.create({
-      model: ADV_MODEL,
-      messages: [{ role: 'user', content: feedbackPrompt }],
-      temperature: 0.5
-    });
-
-    const feedback = gptFeedback.choices[0]?.message?.content || 'No suggestions generated.';
-
-    const projectPrompt = `
-"""
-${resumeForAnalysis}
-"""
-Suggest 2 resume-worthy projects they can build to strengthen their profile in their field.
-Be practical and impactful.
-Return plain text only.
-    `.trim();
-
-    const gptProjects = await openai.chat.completions.create({
-      model: ADV_MODEL,
-      messages: [{ role: 'user', content: projectPrompt }],
-      temperature: 0.6
-    });
-
-    const projectIdeas = gptProjects.choices[0]?.message?.content || 'No projects suggested.';
-
-    res.json({
-      message: '✅ Resume parsed and categorized',
-      categorizedSkills,
-      feedback,
-      projectIdeas,
-      skillStrength
-    });
-  } catch (err) {
-    console.error('GPT Error:', err.response?.data || err.message);
-    res.status(500).json({ error: '❌ Failed to parse resume or generate recommendations.' });
   }
 });
-
-
 
 app.post('/ats-scan', upload.single('resume'), async (req, res) => {
   const file = req.file;
@@ -459,8 +403,6 @@ Return ONLY the HTML with no explanation or markdown.
     res.status(500).json({ error: '❌ Failed to retrieve ATS summary.' });
   }
 });
-
-
 
 // Chat endpoint for resume assistance with conversation history
 app.post('/chat', express.json(), async (req, res) => {
