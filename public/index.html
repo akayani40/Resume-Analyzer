@@ -171,11 +171,14 @@
       </div>
     </div>
     <div id="jobMatchView" style="display: none;">
-      <div class="content-card">
-        <h3>🧩 Compare to Job Description</h3>
-        <textarea id="jdInput" style="width:100%;min-height:120px;" placeholder="Paste job description here..."></textarea>
-        <button id="compareBtn" class="analyze-btn" style="margin-top:10px;">Compare</button>
-        <div id="compareResult" style="margin-top:20px;"></div>
+      <div class="job-match-wrapper">
+        <div class="match-card input-card">
+          <h3>🧩 Compare Your Resume</h3>
+          <p style="font-size:0.92em;opacity:0.8;margin-bottom:12px;">Paste the target job description below and click Compare. We'll highlight strengths, gaps, and provide AI suggestions.</p>
+          <textarea id="jdInput" placeholder="Paste job description here..."></textarea>
+          <button id="compareBtn" class="analyze-btn" style="margin-top:14px;">Compare</button>
+        </div>
+        <div id="compareResult" style="margin-top:24px;"></div>
       </div>
     </div>
     <div id="chatView" style="display: none;">
@@ -920,13 +923,8 @@ fileInput.addEventListener('change', async (event) => {
 document.getElementById('compareBtn').addEventListener('click', async () => {
   let file = uploadedFile;
   if (!file) {
-    // prompt for the resume again if it wasn't persisted
-    const input = document.createElement('input');
-    input.type = 'file'; input.accept='.pdf,.docx,.txt';
-    input.click();
-    await new Promise(r => input.onchange = () => r());
-    file = input.files[0];
-    if (!file) return alert('Please re-select your resume to compare.');
+    alert('Please upload your resume first using the Upload tab before comparing.');
+    return;
   }
   const jobDescription = document.getElementById('jdInput').value.trim();
   if (!jobDescription) {
