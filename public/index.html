@@ -998,43 +998,6 @@ dropZone.addEventListener('drop', (e) => {
   });
 });
 
-// Save the current view to local storage
-function saveCurrentView(viewId) {
-  try { localStorage.setItem('currentView', viewId); } catch{}
-}
-
-// Load the current view from local storage
-function loadCurrentView() {
-  const viewId = localStorage.getItem('currentView');
-  const controls = document.getElementById('controls');
-  // Hide controls unless we have saved ATS data
-  if (!localStorage.getItem('atsData') && controls) {
-    controls.style.display = 'none';
-  }
-  if (viewId && viewId !== 'uploadUI' && localStorage.getItem('atsData')) {
-    toggleView(viewId);
-  } else {
-    toggleView('uploadUI');
-  }
-}
-
-// Modify toggleView so that controls are shown only when leaving uploadUI
-function toggleView(viewId) {
-  ['atsView', 'jobMatchView', 'chatView', 'uploadUI'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = (id === viewId) ? 'block' : 'none';
-  });
-  const controls = document.getElementById('controls');
-  if (viewId === 'uploadUI') {
-    if (controls) controls.style.display = 'none';
-  } else if (uploadedFile && controls) {
-    controls.style.display = 'flex';
-  }
-  if (viewId !== 'uploadUI' && uploadedFile) {
-    saveCurrentView(viewId);
-  }
-}
-
 // === NEW helper to show the static pages =================================================
 function showPage(pageId) {
   const wrapper = document.getElementById('pageContent');
@@ -1164,8 +1127,17 @@ function loadAtsData() {
 // Call loadAtsData on page load
 window.addEventListener('DOMContentLoaded', loadAtsData);
 
-// Call loadCurrentView on page load
-window.addEventListener('DOMContentLoaded', loadCurrentView);
+// Simple helper to remember last view if needed (not used for initial hide)
+function saveCurrentView(viewId) {
+  try { localStorage.setItem('currentView', viewId); } catch {}
+}
+
+// Ensure initial state → upload UI & tabs hidden
+document.addEventListener('DOMContentLoaded', () => {
+  // Remove any previous analysis so a full reload always starts fresh
+  clearSavedAnalysis();
+  toggleView('uploadUI');
+});
 
 // Save data to local storage
 function saveData(viewId, data) {
@@ -1208,6 +1180,28 @@ if (newUploadBtn) {
     location.reload();
   });
 }
+
+// === Simple view toggler =====================================================
+function toggleView(viewId) {
+  const views = ['uploadUI','atsView','jobMatchView','chatView'];
+  views.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = (id === viewId) ? 'block' : 'none';
+  });
+  // Tabs visibility
+  const controls = document.getElementById('controls');
+  if (controls) controls.style.display = (viewId === 'uploadUI') ? 'none' : 'flex';
+}
+
+// === Warn user before refresh/close if analysis exists =====================
+window.addEventListener('beforeunload', function (e) {
+  if (localStorage.getItem('atsData')) {
+    const msg = 'Refreshing will clear your current analysis. Continue?';
+    e.preventDefault();
+    e.returnValue = msg;    // Required for some browsers
+    return msg;             // For others
+  }
+});
 </script>
 </body>
 </html>
