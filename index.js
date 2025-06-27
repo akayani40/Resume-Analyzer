@@ -405,94 +405,53 @@ Return ONLY the HTML with no explanation or markdown.
 });
 
 // Chat endpoint for resume assistance with conversation history
-app.post('/chat', express.json(), async (req, res) => {
-  console.log(`🔍 MOCK_MODE value at runtime is:`, MOCK_MODE);
+app.post('/chat', async (req, res) => {
+  const { message, resume } = req.body;
+  console.log('Received in /chat:', { message, resume: resume?.slice(0, 200) });
 
-  const { message, resumeText, conversationHistory = [] } = req.body;
-
-  if (!message) {
-    return res.status(400).json({ error: 'No message provided' });
-  }
-
-  console.log('💬 Chat request received. Mode:', MOCK_MODE ? 'MOCK' : 'LIVE');
-
-  if (MOCK_MODE) {
-    console.log('📌 Using MOCK data for chat response');
-    let mockReply = '';
-
-    if (message.toLowerCase().includes('experience') || message.toLowerCase().includes('work')) {
-      mockReply = "Looking at your experience section, I notice you could add more quantifiable achievements...";
-    } else if (message.toLowerCase().includes('education')) {
-      mockReply = "Your education section looks good...";
-    } else if (message.toLowerCase().includes('skills')) {
-      mockReply = "For your skills section, I recommend organizing them...";
-    } else if (message.toLowerCase().includes('format') || message.toLowerCase().includes('layout')) {
-      mockReply = "For resume formatting, I recommend using a clean, professional layout...";
-    } else if (message.toLowerCase().includes('hello') || message.toLowerCase().includes('hi')) {
-      mockReply = "Hello! I'm your AI resume assistant...";
-    } else {
-      mockReply = "I've analyzed your resume and have some suggestions...";
-    }
-
-    const updatedHistory = [
-      ...(conversationHistory || []),
-      { role: 'user', content: message },
-      { role: 'assistant', content: mockReply }
-    ];
-
-    // IMPORTANT → MUST RETURN so LIVE does not run:
-    return res.json({
-      reply: mockReply,
-      conversationHistory: updatedHistory
+  if (!message || !resume || resume.trim().length < 30) {
+    return res.status(400).json({
+      reply: 'No resume found. Please upload your resume first.'
     });
   }
 
-  // LIVE mode → only runs if MOCK_MODE is false
+  const systemPrompt = `
+You are ParsePro's AI Resume Coach. The following is the user's full resume (plain text, from their upload).
+You MUST answer ONLY using this resume. If you do not see any resume content, reply: 'No resume found.'
+If you give generic advice, you will be penalized. You must quote or paraphrase at least two lines from the resume.
+Do NOT give generic resume-writing advice. Keep the answer under 250 words using concise bullet points.
+`;
+
+  const MAX_RESUME_CHARS = 5000;
+  let resumeForPrompt = resume;
+  if (resume.length > MAX_RESUME_CHARS) {
+    resumeForPrompt = resume.slice(0, MAX_RESUME_CHARS) + '\n...[truncated]\n';
+  }
+
+  const userContent = `QUESTION:\n${message}\n\nRESUME (plain text from user upload):\n"""\n${resumeForPrompt}\n"""`;
+
+  const gptMessages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user',   content: userContent }
+  ];
+
   try {
-    console.log('🚀 Using LIVE mode for chat response');
-    let messages = [
-      {
-        role: 'system',
-        content: `You are an AI assistant specialized in resume writing and career advice for ALL fields...`
-      }
-    ];
-
-    if (conversationHistory.length > 0) {
-      messages = [...messages, ...conversationHistory];
-    }
-
-    if (resumeText && messages.length === 1) {
-      messages.push({
-        role: 'user',
-        content: `Here is my resume:\n"""\n${resumeText}\n"""\n\n${message}`
-      });
-    } else {
-      messages.push({
-        role: 'user',
-        content: message
-      });
-    }
-
-    const chatResponse = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: messages,
-      temperature: 0.7
+    const aiRes = await openai.chat.completions.create({
+      model: 'gpt-4',
+      messages: gptMessages,
+      temperature: 0
     });
-
-    const reply = chatResponse.choices[0]?.message?.content || 'I apologize, but I was unable to process your request.';
-
-    res.json({
-      reply,
-      conversationHistory: [
-        ...messages.slice(1),
-        { role: 'assistant', content: reply }
-      ]
-    });
+    const reply = aiRes.choices[0]?.message?.content?.trim() ||
+                  'Sorry, I had trouble generating an answer.';
+    return res.json({ reply });
   } catch (err) {
-    console.error('Chat Error:', err.response?.data || err.message);
-    res.status(500).json({ error: '❌ Failed to process chat message.' });
+    console.error('❌ /chat error', err);
+    return res.status(500).json({
+      reply: 'An internal error occurred.'
+    });
   }
 });
+
 
 // Compare resume to job description
 app.post('/compare-jd', express.json(), async (req, res) => {
@@ -545,6 +504,6 @@ Return JSON with keys matchedSkills, missingSkills, overallMatch.`;
   }
 });
 
-app.listen(PORT, () =>
-  console.log(`✅ Resume Analyzer running at http://localhost:${PORT} in ${MOCK_MODE ? 'MOCK' : 'LIVE'} mode`)
-);
+app.listen(PORT, () => {
+  console.log(`✅ Resume Analyzer running at http://localhost:${PORT} in ${MOCK_MODE ? 'MOCK' : 'LIVE'} mode`);
+});

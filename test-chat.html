@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .chat-container {
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      padding: 10px;
+      height: 300px;
+      overflow-y: auto;
+      margin-bottom: 10px;
+    }
+    .message {
+      margin-bottom: 10px;
+      padding: 8px;
+      border-radius: 5px;
+    }
+    .user-message {
+      background-color: #e6f7ff;
+      text-align: right;
+    }
+    .ai-message {
+      background-color: #f0f0f0;
+    }
+    .chat-input-container {
+      display: flex;
+      gap: 10px;
+    }
+    .chat-input {
+      flex: 1;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    button {
+      padding: 8px 16px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+  </style>
+</head>
+<body>
+  <h1>Chat Test</h1>
+  
+  <div class="chat-container" id="chatMessages">
+    <!-- Chat messages will appear here -->
+  </div>
+  
+  <div class="chat-input-container">
+    <textarea id="chatInput" class="chat-input" placeholder="Ask a question about your resume..."></textarea>
+    <button id="sendMessage">Send</button>
+    <button id="testResumeData" style="background-color: #2196F3;">Test Resume Data</button>
+  </div>
+
+  <script>
+    // Simulate the resume data being stored in localStorage
+    const resumeText = `John Doe
+Software Engineer
+john.doe@example.com | (123) 456-7890 | linkedin.com/in/johndoe
+
+SUMMARY
+Experienced software engineer with 5+ years of experience in full-stack development, specializing in JavaScript, React, and Node.js. Proven track record of delivering high-quality web applications and improving performance.
+
+EXPERIENCE
+Senior Software Engineer | ABC Tech | Jan 2020 - Present
+- Led development of a customer-facing web application that increased user engagement by 35%
+- Implemented CI/CD pipeline that reduced deployment time by 50%
+- Mentored junior developers and conducted code reviews
+
+Software Engineer | XYZ Solutions | Mar 2017 - Dec 2019
+- Developed RESTful APIs using Node.js and Express
+- Built responsive UI components with React and Redux
+- Optimized database queries resulting in 40% faster load times
+
+EDUCATION
+Bachelor of Science in Computer Science
+University of Technology | 2013 - 2017
+
+SKILLS
+- Programming: JavaScript, TypeScript, HTML, CSS, Python
+- Frameworks: React, Node.js, Express, Next.js
+- Tools: Git, Docker, AWS, Jest, Webpack
+- Databases: MongoDB, PostgreSQL, MySQL`;
+
+    // Store the resume in localStorage
+    localStorage.setItem('resumeText', resumeText);
+
+    // Mock ATS data
+    const atsData = {
+      data: {
+        atsEvaluation: {
+          topFixes: [
+            "Add more quantifiable achievements",
+            "Include specific project names",
+            "Add certifications section"
+          ]
+        }
+      }
+    };
+    localStorage.setItem('atsData', JSON.stringify(atsData));
+
+    // Test button to check resume data
+    document.getElementById('testResumeData').addEventListener('click', () => {
+      console.log('=== TESTING RESUME DATA ===');
+      
+      // Check localStorage
+      const resumeFromStorage = localStorage.getItem('resumeText');
+      console.log('Resume in localStorage:', resumeFromStorage ? 'YES' : 'NO');
+      if (resumeFromStorage) {
+        console.log('Resume length:', resumeFromStorage.length);
+        console.log('Resume preview:', resumeFromStorage.substring(0, 100) + '...');
+      }
+      
+      // Check ATS data
+      try {
+        const atsDataStr = localStorage.getItem('atsData');
+        console.log('ATS data in localStorage:', atsDataStr ? 'YES' : 'NO');
+        
+        if (atsDataStr) {
+          const atsData = JSON.parse(atsDataStr);
+          console.log('ATS data parsed successfully:', atsData ? 'YES' : 'NO');
+          console.log('ATS data has evaluation:', atsData.data?.atsEvaluation ? 'YES' : 'NO');
+        }
+      } catch (e) {
+        console.error('Error checking ATS data:', e);
+      }
+      
+      alert('Resume data check complete. Check the browser console for results.');
+    });
+
+    // Chat send handler
+    document.getElementById('sendMessage').addEventListener('click', async () => {
+      const input = document.getElementById('chatInput');
+      const chatMessages = document.getElementById('chatMessages');
+      const msg = input.value.trim();
+      if (!msg) return;
+
+      // Add user message to chat
+      const userDiv = document.createElement('div');
+      userDiv.className = 'message user-message';
+      userDiv.textContent = msg;
+      chatMessages.appendChild(userDiv);
+      
+      // Add AI thinking message
+      const aiDiv = document.createElement('div');
+      aiDiv.className = 'message ai-message';
+      aiDiv.textContent = 'Thinking...';
+      chatMessages.appendChild(aiDiv);
+      
+      // Clear input and keep focus
+      input.value = '';
+      input.focus();
+      
+      // Scroll to bottom so latest messages are visible
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+
+      try {
+        // Get resume content from localStorage
+        const resumeContent = localStorage.getItem('resumeText') || '';
+        console.log('Resume from localStorage, length:', resumeContent.length);
+        
+        // If no content, show error
+        if (!resumeContent) {
+          aiDiv.textContent = 'I need your resume to provide specific feedback. Please upload your resume first.';
+          return;
+        }
+        
+        // Log resume preview for debugging
+        console.log('Resume preview:', resumeContent.substring(0, 100) + '...');
+        
+        // Get ATS data if available
+        let atsData = {};
+        try {
+          const atsDataStr = localStorage.getItem('atsData');
+          if (atsDataStr) {
+            const parsed = JSON.parse(atsDataStr);
+            if (parsed.data?.atsEvaluation) {
+              atsData = parsed.data.atsEvaluation;
+            }
+          }
+        } catch (e) {
+          console.error('Error parsing ATS data:', e);
+        }
+        
+        // Create a custom system message to force using the resume
+        const customSystemMessage = `
+You are an AI assistant analyzing a resume. The resume text is provided below.
+You MUST reference specific content from this resume in your response.
+NEVER say "I can't view documents directly" - the resume is provided in this message.
+
+RESUME:
+${resumeContent}
+
+When responding to the user's question, you MUST:
+1. Quote or reference at least 2 specific parts of their resume
+2. Be specific about which sections you're referring to
+3. Provide personalized advice based on their actual resume content
+`;
+        
+        // Simulate sending request to backend
+        console.log('Sending chat request with:');
+        console.log('- Message:', msg);
+        console.log('- Resume length:', resumeContent.length);
+        console.log('- Custom system message:', customSystemMessage.substring(0, 100) + '...');
+        console.log('- Force use resume flag:', true);
+        
+        // Simulate AI response (in a real app, this would be a fetch to the backend)
+        setTimeout(() => {
+          // Simulate an AI response that references the resume
+          const responses = [
+            `Looking at your resume, I notice in your EXPERIENCE section that you "Led development of a customer-facing web application that increased user engagement by 35%". This is excellent quantifiable achievement! I also see in your SKILLS section that you're proficient in "JavaScript, TypeScript, HTML, CSS, Python". Based on these skills and your experience with React and Node.js, I would recommend highlighting more specific project details to showcase your full-stack capabilities.`,
+            
+            `Based on your resume, I can see you have experience as a "Senior Software Engineer at ABC Tech" where you "Implemented CI/CD pipeline that reduced deployment time by 50%". This is a great achievement! In your SKILLS section, you list "Git, Docker, AWS" as tools you're familiar with. To strengthen your DevOps credentials, consider adding more details about the specific CI/CD tools you used and how you configured them.`,
+            
+            `I notice in your EXPERIENCE section that you "Optimized database queries resulting in 40% faster load times" while at XYZ Solutions. This is an excellent quantifiable achievement! I also see in your SKILLS section that you're familiar with "MongoDB, PostgreSQL, MySQL". To enhance your database expertise presentation, consider adding specific optimization techniques you used or particular database features you implemented.`
+          ];
+          
+          // Pick a random response that references the resume
+          const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+          aiDiv.textContent = randomResponse;
+          
+          // Ensure chat scrolls to the latest message
+          chatMessages.scrollTop = chatMessages.scrollHeight;
+        }, 1500);
+        
+      } catch (err) {
+        console.error('Chat error:', err);
+        aiDiv.textContent = '⚠️ Error processing your request. Please try again.';
+      }
+    });
+  </script>
+</body>
+</html>

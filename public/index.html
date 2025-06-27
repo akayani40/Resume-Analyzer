@@ -183,16 +183,12 @@
     </div>
     <div id="chatView" style="display: none;">
       <div class="chat-resume-container">
-        <div class="chat-section">
+        <div class="chat-section" style="margin-bottom:32px;">
           <h3>💬 Chat with AI Assistant</h3>
-          <div class="chat-container">
-            <div id="chatMessages" class="chat-messages">
-              <!-- Chat messages will appear here -->
-            </div>
-            <div class="chat-input-container">
-              <textarea id="chatInput" class="chat-input" placeholder="Ask for resume advice or editing suggestions..."></textarea>
-              <button id="sendMessage" class="chat-send-btn">Send</button>
-            </div>
+          <div class="chat-container" id="chatMessages" style="padding:16px; min-height:180px; max-height:260px; overflow-y:auto; margin-bottom:12px;"></div>
+          <div style="display:flex; gap:8px;">
+            <input id="chatInput" type="text" placeholder="Ask a question about your resume..." style="flex:1; padding:10px; border-radius:6px; border:1px solid #444;" />
+            <button id="sendMessage" style="padding:10px 18px; border-radius:6px; font-weight:bold;">Send</button>
           </div>
         </div>
         
@@ -647,6 +643,7 @@
   </style>
 
   <script>
+console.log('ParsePro main script loaded');
 // === global state ===========================================================
 let uploadedFile = null;      // remember the resume so we can reuse it later
 
@@ -900,8 +897,14 @@ fileInput.addEventListener('change', async (event) => {
 
       /* load formatted resume into the editor panel */
       if (atsData.originalResumeHTML) {
-        document.getElementById('resumeEditor').innerHTML =
-          atsData.originalResumeHTML;
+        // Remove markdown wrappers if present
+        let cleanHTML = atsData.originalResumeHTML.replace(/```html|```/g, '').trim();
+        document.getElementById('resumeEditor').innerHTML = cleanHTML;
+      }
+
+      // store plain text resume for chat
+      if (atsData.plainTextResume) {
+        localStorage.setItem('resumeText', atsData.plainTextResume);
       }
 
       // Inside after successfully rendering ATS evaluation (inside if (atsRes.ok ... ))
@@ -981,13 +984,7 @@ document.getElementById('compareBtn').addEventListener('click', async () => {
 });
 
 ['dragleave', 'drop'].forEach(eventName => {
-  dropZone.addEventListener(eventName, (e) => {
-    e.preventDefault();
-    dropZone.classList.remove('dragover');
-  });
-});
-
-dropZone.addEventListener('drop', (e) => {
+  dropZone.addEventListener('drop', (e) => {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
     if (file) {
@@ -996,6 +993,7 @@ dropZone.addEventListener('drop', (e) => {
       fileInput.dispatchEvent(new Event('change'));
     }
   });
+});
 });
 
 // === NEW helper to show the static pages =================================================
@@ -1134,7 +1132,6 @@ function saveCurrentView(viewId) {
 
 // Ensure initial state → upload UI & tabs hidden
 document.addEventListener('DOMContentLoaded', () => {
-  // Remove any previous analysis so a full reload always starts fresh
   clearSavedAnalysis();
   toggleView('uploadUI');
 });
@@ -1202,6 +1199,58 @@ window.addEventListener('beforeunload', function (e) {
     return msg;             // For others
   }
 });
+
+// Add new chat logic at the end of the file
+document.getElementById('sendMessage')?.addEventListener('click', async () => {
+  const input = document.getElementById('chatInput');
+  const chatMessages = document.getElementById('chatMessages');
+  const msg = input.value.trim();
+  if (!msg) return;
+
+  // Add user message
+  const userDiv = document.createElement('div');
+  userDiv.className = 'message user-message';
+  userDiv.style = 'background:#69995D;color:#fff;padding:8px 12px;border-radius:8px;margin-bottom:6px;align-self:flex-end;max-width:80%;';
+  userDiv.textContent = msg;
+  chatMessages.appendChild(userDiv);
+
+  // Add AI thinking bubble
+  const aiDiv = document.createElement('div');
+  aiDiv.className = 'message ai-message';
+  aiDiv.style = 'background:#333;color:#fff;padding:8px 12px;border-radius:8px;margin-bottom:6px;align-self:flex-start;max-width:80%;opacity:0.7;';
+  aiDiv.textContent = 'Thinking...';
+  chatMessages.appendChild(aiDiv);
+
+  input.value = '';
+  input.focus();
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+
+  // Get plain text resume from localStorage
+  const resume = localStorage.getItem('resumeText') || '';
+  if (!resume) {
+    aiDiv.textContent = 'Please upload your resume first.';
+    return;
+  }
+
+  // Log what is being sent to the backend
+  console.log('Sending to backend:', { message: msg, resume });
+
+  try {
+    const response = await fetch('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg, resume })
+    });
+    const data = await response.json();
+    aiDiv.textContent = data.reply || 'No reply.';
+    aiDiv.style.opacity = 1;
+  } catch (err) {
+    aiDiv.textContent = '⚠️ Error connecting to server.';
+    aiDiv.style.opacity = 1;
+  }
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+});
+
 </script>
 </body>
 </html>

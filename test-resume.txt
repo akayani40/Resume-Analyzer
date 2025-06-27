@@ -1,0 +1,27 @@
+John Doe
+Software Engineer
+john.doe@example.com | (123) 456-7890 | linkedin.com/in/johndoe
+
+SUMMARY
+Experienced software engineer with 5+ years of experience in full-stack development, specializing in JavaScript, React, and Node.js. Proven track record of delivering high-quality web applications and improving performance.
+
+EXPERIENCE
+Senior Software Engineer | ABC Tech | Jan 2020 - Present
+- Led development of a customer-facing web application that increased user engagement by 35%
+- Implemented CI/CD pipeline that reduced deployment time by 50%
+- Mentored junior developers and conducted code reviews
+
+Software Engineer | XYZ Solutions | Mar 2017 - Dec 2019
+- Developed RESTful APIs using Node.js and Express
+- Built responsive UI components with React and Redux
+- Optimized database queries resulting in 40% faster load times
+
+EDUCATION
+Bachelor of Science in Computer Science
+University of Technology | 2013 - 2017
+
+SKILLS
+- Programming: JavaScript, TypeScript, HTML, CSS, Python
+- Frameworks: React, Node.js, Express, Next.js
+- Tools: Git, Docker, AWS, Jest, Webpack
+- Databases: MongoDB, PostgreSQL, MySQL
